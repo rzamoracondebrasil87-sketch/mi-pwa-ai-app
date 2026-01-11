@@ -57,7 +57,7 @@ export async function callGeminiAPI(prompt: string): Promise<string> {
   };
 
   try {
-    const response = await fetch(`${API_URL}?key=${GEMINI_API_KEY}`, {
+    const response = await fetchWithRetries(`${API_URL}?key=${GEMINI_API_KEY}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -65,13 +65,8 @@ export async function callGeminiAPI(prompt: string): Promise<string> {
       body: JSON.stringify(requestBody),
     });
 
-    if (!response.ok) {
-      const error = await response.json() as GeminiResponse;
-      throw new Error(`Error en Gemini API: ${error.error?.message || response.statusText}`);
-    }
-
     const data = await response.json() as GeminiResponse;
-    
+
     if (!data.candidates?.[0]?.content?.parts?.[0]?.text) {
       throw new Error('Respuesta inválida de Gemini API');
     }
@@ -119,18 +114,13 @@ export async function analyzeImageWithGemini(imageBase64: string, prompt: string
   };
 
   try {
-    const response = await fetch(`${API_URL}?key=${GEMINI_API_KEY}`, {
+    const response = await fetchWithRetries(`${API_URL}?key=${GEMINI_API_KEY}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(requestBody),
     });
-
-    if (!response.ok) {
-      const error = await response.json() as GeminiResponse;
-      throw new Error(`Error en Gemini API: ${error.error?.message || response.statusText}`);
-    }
 
     const data = await response.json() as GeminiResponse;
     return data.candidates?.[0]?.content?.parts?.[0]?.text || 'Sin respuesta';
@@ -140,6 +130,47 @@ export async function analyzeImageWithGemini(imageBase64: string, prompt: string
       throw error;
     }
     throw new Error('Error al analizar imagen con Gemini');
+  }
+}
+
+/**
+ * Helper: sleep ms
+ */
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Helper: fetch with retry/backoff for 429 responses
+ */
+const DEFAULT_RETRIES = Number(import.meta.env.VITE_GEMINI_RETRIES) || 5;
+async function fetchWithRetries(input: RequestInfo, init?: RequestInit, retries = DEFAULT_RETRIES) {
+  let attempt = 0;
+  while (true) {
+    const res = await fetch(input, init);
+    if (res.ok) return res;
+
+    // Try to parse error body
+    let errBody: any = null;
+    try {
+      errBody = await res.clone().json();
+    } catch {}
+
+    // If quota/rate limit (429), retry with backoff
+    if (res.status === 429 && attempt < retries) {
+      attempt++;
+      const retryAfter = res.headers.get('Retry-After');
+      const waitMs = retryAfter ? Number(retryAfter) * 1000 : Math.min(1000 * 2 ** attempt, 10000);
+      console.warn(`Gemini rate limited (429). Reintentando en ${waitMs}ms (intento ${attempt}/${retries})`);
+      await sleep(waitMs);
+      continue;
+    }
+
+    // For other errors, throw with parsed message when possible
+    const message = errBody?.error?.message || res.statusText || `HTTP ${res.status}`;
+    const e: any = new Error(`Error en Gemini API: ${message}`);
+    (e as any).status = res.status;
+    throw e;
   }
 }
 

@@ -469,8 +469,12 @@ export const WeighingForm: React.FC = () => {
                     throw new Error("JSON Parse Error");
                 }
             }
-        } catch (error) {
+        } catch (error: any) {
             console.warn("AI Vision Failed, attempting Vision API then Offline OCR...", error);
+            // If quota / rate-limit error from Gemini, surface clearer message to user
+            if (error?.message && /quota|rate limit|429|exceeded/i.test(error.message)) {
+                setAiAlert("Error de cuota en Gemini: activa billing o usa otra clave. Intentando alternativas...");
+            }
             // First try Google Vision if configured
             try {
                 const base64 = base64Image.includes(',') ? base64Image.split(',')[1] : base64Image;
