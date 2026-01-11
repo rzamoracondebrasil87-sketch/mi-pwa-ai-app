@@ -5,7 +5,14 @@
  */
 
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+const GEMINI_API_KEYS_CSV = import.meta.env.VITE_GEMINI_API_KEYS || '';
 const API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+
+// Build keys array: prefer VITE_GEMINI_API_KEYS CSV, fallback to single key
+const GEMINI_KEYS: string[] = GEMINI_API_KEYS_CSV
+  ? GEMINI_API_KEYS_CSV.split(',').map(k => k.trim()).filter(Boolean)
+  : (GEMINI_API_KEY ? [GEMINI_API_KEY] : []);
+let geminiKeyIndex = 0;
 
 const SYSTEM_INSTRUCTION = "Eres 'Conferente', un asistente avanzado de IA especializado en análisis de datos, consultoría estratégica y gestión inteligente de información. Tu tono es profesional, analítico pero accesible. Estás integrado en una PWA diseñada para ayudar a usuarios a tomar decisiones basadas en datos. Cuando presentes datos o conclusiones, usa un formato estructurado y claro.";
 
@@ -56,29 +63,37 @@ export async function callGeminiAPI(prompt: string): Promise<string> {
     ],
   };
 
-  try {
-    const response = await fetchWithRetries(`${API_URL}?key=${GEMINI_API_KEY}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(requestBody),
-    });
-
-    const data = await response.json() as GeminiResponse;
-
-    if (!data.candidates?.[0]?.content?.parts?.[0]?.text) {
-      throw new Error('Respuesta inválida de Gemini API');
+  // Try using available keys, rotate on 429/quota errors
+  const errors: Error[] = [];
+  const keysToTry = GEMINI_KEYS.length ? GEMINI_KEYS : (GEMINI_API_KEY ? [GEMINI_API_KEY] : []);
+  if (!keysToTry.length) throw new Error('No Gemini API keys available. Configure VITE_GEMINI_API_KEY or VITE_GEMINI_API_KEYS.');
+  for (let attempt = 0; attempt < keysToTry.length; attempt++) {
+    const key = keysToTry[(geminiKeyIndex + attempt) % keysToTry.length];
+    try {
+      const response = await fetchWithRetries(`${API_URL}?key=${key}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody),
+      });
+      const data = await response.json() as GeminiResponse;
+      if (!data.candidates?.[0]?.content?.parts?.[0]?.text) {
+        throw new Error('Respuesta inválida de Gemini API');
+      }
+      // Advance index so next call prefers next key
+      geminiKeyIndex = (geminiKeyIndex + attempt) % keysToTry.length;
+      return data.candidates[0].content.parts[0].text;
+    } catch (err: any) {
+      console.error('Gemini key attempt failed:', err?.message || err);
+      errors.push(err instanceof Error ? err : new Error(String(err)));
+      const msg = (err && err.message) ? err.message : '';
+      // If error is not a quota/rate-limit, stop trying
+      if (!/quota|rate limit|429|exceeded/i.test(msg)) break;
+      // otherwise try next key
+      continue;
     }
-
-    return data.candidates[0].content.parts[0].text;
-  } catch (error) {
-    if (error instanceof Error) {
-      console.error('Error en Gemini:', error.message);
-      throw error;
-    }
-    throw new Error('Error desconocido en Gemini API');
   }
+  const all = errors.map(e => e.message).join(' | ');
+  throw new Error(`Todas las claves Gemini fallaron: ${all}`);
 }
 
 /**
@@ -113,24 +128,30 @@ export async function analyzeImageWithGemini(imageBase64: string, prompt: string
     ],
   };
 
-  try {
-    const response = await fetchWithRetries(`${API_URL}?key=${GEMINI_API_KEY}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(requestBody),
-    });
-
-    const data = await response.json() as GeminiResponse;
-    return data.candidates?.[0]?.content?.parts?.[0]?.text || 'Sin respuesta';
-  } catch (error) {
-    if (error instanceof Error) {
-      console.error('Error analizando imagen:', error.message);
-      throw error;
+  const errors: Error[] = [];
+  const keysToTry = GEMINI_KEYS.length ? GEMINI_KEYS : (GEMINI_API_KEY ? [GEMINI_API_KEY] : []);
+  if (!keysToTry.length) throw new Error('No Gemini API keys available. Configure VITE_GEMINI_API_KEY or VITE_GEMINI_API_KEYS.');
+  for (let attempt = 0; attempt < keysToTry.length; attempt++) {
+    const key = keysToTry[(geminiKeyIndex + attempt) % keysToTry.length];
+    try {
+      const response = await fetchWithRetries(`${API_URL}?key=${key}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody),
+      });
+      const data = await response.json() as GeminiResponse;
+      geminiKeyIndex = (geminiKeyIndex + attempt) % keysToTry.length;
+      return data.candidates?.[0]?.content?.parts?.[0]?.text || 'Sin respuesta';
+    } catch (err: any) {
+      console.error('Gemini image attempt failed:', err?.message || err);
+      errors.push(err instanceof Error ? err : new Error(String(err)));
+      const msg = (err && err.message) ? err.message : '';
+      if (!/quota|rate limit|429|exceeded/i.test(msg)) break;
+      continue;
     }
-    throw new Error('Error al analizar imagen con Gemini');
   }
+  const all = errors.map(e => e.message).join(' | ');
+  throw new Error(`Todas las claves Gemini fallaron: ${all}`);
 }
 
 /**
