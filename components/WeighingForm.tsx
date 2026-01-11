@@ -6,6 +6,7 @@ import { trackEvent } from '../services/analyticsService';
 import { useTranslation } from '../services/i18n';
 import { useToast } from './Toast';
 import { callGeminiAPI, analyzeImageWithGemini } from '../services/geminiService';
+import { analyzeImageWithVision } from '../services/visionService';
 
 // Use stable model for reliable production vision
 const TOLERANCE_KG = 0.2;
@@ -219,70 +220,159 @@ export const WeighingForm: React.FC = () => {
     };
 
     const parseOCRText = (text: string) => {
-        const lines = text.split('\n');
+        const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
         const cleanText = text.toLowerCase();
         let foundData = false;
         let foundExpiration = '';
-        
-        // 1. Dates (DD/MM/YYYY or DD.MM.YY)
+
+        // Helper: normalize date to DD/MM/YYYY when possible
+        const normalizeDate = (d: string) => {
+            const m = d.match(/(\d{2})[\/.](\d{2})[\/.](\d{2,4})/);
+            if (!m) return null;
+            let day = m[1];
+            let month = m[2];
+            let year = m[3];
+            if (year.length === 2) year = '20' + year;
+            return `${day}/${month}/${year}`;
+        };
+
+        // Dates: collect all date-like tokens (more permissive)
         const dateRegex = /(\d{2})[\/.](\d{2})[\/.](\d{2,4})/g;
         const dates = [...cleanText.matchAll(dateRegex)].map(m => m[0]);
-        
-        // Expiration
+
+        // 1) Extract expiration explicitly by label
         if (!expirationDate) {
-            const expMatch = cleanText.match(/(val|venc|validade|v\:|val\:)[\s\.]*(\d{2}[\/.]\d{2}[\/.]\d{2,4})/);
+            const expMatch = cleanText.match(/(val|venc|validade|v\:|val\:)[\s\.:]*([\d\/.]{6,10})/);
             if (expMatch) {
-                foundExpiration = expMatch[2];
-                setExpirationDate(foundExpiration);
-                foundData = true;
+                const nd = normalizeDate(expMatch[2]);
+                if (nd) {
+                    foundExpiration = nd;
+                    setExpirationDate(nd);
+                    foundData = true;
+                }
             } else if (dates.length > 1) {
-                foundExpiration = dates[1];
-                setExpirationDate(foundExpiration); // Assume second date
-                foundData = true;
-            }
-        }
-
-        // Production
-        if (!productionDate) {
-            const prodMatch = cleanText.match(/(fab|prod|data|f\:|fab\:)[\s\.]*(\d{2}[\/.]\d{2}[\/.]\d{2,4})/);
-            if (prodMatch) {
-                setProductionDate(prodMatch[2]);
-                foundData = true;
-            } else if (dates.length > 0) {
-                setProductionDate(dates[0]);
-                foundData = true;
-            }
-        }
-
-        // Batch (Lote)
-        if (!batch) {
-            const batchMatch = cleanText.match(/(lote|l\:|l\.|batch)[\s\.:]*([a-z0-9]+)/);
-            if (batchMatch) {
-                setBatch(batchMatch[2].toUpperCase());
-                foundData = true;
-            }
-        }
-
-        // Tara
-        if (!boxTara) {
-            // Look for small numbers followed by g or kg near the word "Tara"
-            const taraMatch = cleanText.match(/(tara|t\.)[\s\.:]*([\d\.,]+)/);
-            if (taraMatch) {
-                let valStr = taraMatch[2].replace(',', '.');
-                let val = parseFloat(valStr);
-                if (!isNaN(val)) {
-                    // Logic from online: < 10 implies KG, convert to G
-                    if (val < 10) val = val * 1000;
-                    setBoxTara(Math.round(val).toString());
-                    setShowBoxes(true);
+                const nd = normalizeDate(dates[1]);
+                if (nd) {
+                    foundExpiration = nd;
+                    setExpirationDate(nd);
                     foundData = true;
                 }
             }
         }
 
+        // 2) Production date
+        if (!productionDate) {
+            const prodMatch = cleanText.match(/(fab|prod|data de fab|fabricacao|f\:|fab\:|prod\:)[\s\.:]*([\d\/.]{6,10})/);
+            if (prodMatch) {
+                const nd = normalizeDate(prodMatch[2]);
+                if (nd) {
+                    setProductionDate(nd);
+                    foundData = true;
+                }
+            } else if (dates.length > 0) {
+                const nd = normalizeDate(dates[0]);
+                if (nd) {
+                    setProductionDate(nd);
+                    foundData = true;
+                }
+            }
+        }
+
+        // 3) Batch (Lote)
+        if (!batch) {
+            // Check line-by-line for 'lote' or 'l:' first
+            const batchLine = lines.find(l => /\b(lote|l\:|l\.|batch)\b/i.test(l));
+            if (batchLine) {
+                const m = batchLine.match(/(lote|l\:|l\.|batch)[\s\.:]*([A-Za-z0-9\-\/]+)/i);
+                if (m && m[2]) {
+                    setBatch(m[2].toUpperCase());
+                    foundData = true;
+                }
+            } else {
+                // fallback: look for uppercase alphanumeric tokens of reasonable length
+                for (const l of lines) {
+                    const token = l.replace(/[^A-Za-z0-9\-]/g, '');
+                    if (/^[A-Z0-9\-]{4,12}$/.test(token)) {
+                        setBatch(token.toUpperCase());
+                        foundData = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // 4) Tara (packaging weight)
+        if (!boxTara) {
+            // Prefer explicit 'tara' mentions
+            const taraLine = lines.find(l => /\btara\b/i.test(l));
+            if (taraLine) {
+                const m = taraLine.match(/(\d+[\.,]?\d*)\s*(g|kg)?/i);
+                if (m) {
+                    let val = parseFloat(m[1].replace(',', '.'));
+                    const unit = (m[2] || '').toLowerCase();
+                    if (unit === 'kg' || val < 10) val = unit === 'kg' ? val * 1000 : val * 1000;
+                    setBoxTara(Math.round(val).toString());
+                    setShowBoxes(true);
+                    foundData = true;
+                }
+            } else {
+                // Fallback: find small numbers with g or kg anywhere
+                for (const l of lines) {
+                    const m = l.match(/(\d+[\.,]?\d*)\s*(g|kg)\b/i);
+                    if (m) {
+                        let val = parseFloat(m[1].replace(',', '.'));
+                        const unit = m[2].toLowerCase();
+                        if (unit === 'kg') val = val * 1000;
+                        // Heuristic: ignore numbers that are too large (>20000g)
+                        if (!isNaN(val) && val > 0 && val < 20000) {
+                            setBoxTara(Math.round(val).toString());
+                            setShowBoxes(true);
+                            foundData = true;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        // 5) Product extraction: choose the best candidate line (prefer long text, no digits, not labels)
+        if (!product) {
+            const labelKeywords = /\b(lote|val|venc|validade|fab|prod|peso|kg|g|tara|codigo|cod|ingredientes|ingrediente)\b/i;
+            let best: string | null = null;
+            let bestScore = 0;
+            for (const l of lines) {
+                const clean = l.replace(/[^\p{L}\s]/gu, '').trim();
+                if (!clean) continue;
+                if (labelKeywords.test(clean)) continue;
+                const words = clean.split(/\s+/);
+                const digitCount = (clean.match(/\d/g) || []).length;
+                // Score: more words and longer length, penalize digits
+                const score = words.length * 2 + Math.min(10, clean.length / 5) - digitCount * 2;
+                if (score > bestScore) {
+                    best = clean;
+                    bestScore = score;
+                }
+            }
+            if (best) {
+                // Keep original casing by finding the original line
+                const orig = lines.find(l => l.toLowerCase().includes(best!.toLowerCase()));
+                setProduct((orig || best).trim());
+                foundData = true;
+            }
+        }
+
+        // 6) Supplier extraction: simple heuristic - small words after product or lines with brand-like tokens
+        if (!supplier) {
+            const supplierLine = lines.find(l => /\b(brand|marca|fornecedor|supplier|s\.|marca\:|fornecedor\:|marca:)\b/i.test(l));
+            if (supplierLine) {
+                setSupplier(supplierLine.trim());
+                foundData = true;
+            }
+        }
+
         if (foundData) {
             const riskMsg = checkExpirationRisk(foundExpiration);
-            setAiAlert(riskMsg ? `${riskMsg}. Datos detectados.` : "✅ Datos detectados localmente (Offline).");
+            setAiAlert(riskMsg ? `${riskMsg}. Datos detectados.` : "✅ Datos detectados localmente (Offline). Puede revisar y ajustar.");
         } else {
             setAiAlert("⚠️ No se detectaron datos claros. Copie manualmente.");
         }
@@ -380,9 +470,21 @@ export const WeighingForm: React.FC = () => {
                 }
             }
         } catch (error) {
-            console.warn("AI Vision Failed, attempting Offline OCR...", error);
-            // Fallback to Offline OCR
-            await performOfflineOCR(base64Image);
+            console.warn("AI Vision Failed, attempting Vision API then Offline OCR...", error);
+            // First try Google Vision if configured
+            try {
+                const base64 = base64Image.includes(',') ? base64Image.split(',')[1] : base64Image;
+                const visionText = await analyzeImageWithVision(base64);
+                if (visionText) {
+                    console.log('Vision API Text:', visionText);
+                    parseOCRText(visionText);
+                } else {
+                    await performOfflineOCR(base64Image);
+                }
+            } catch (visionError) {
+                console.warn('Vision API failed, falling back to offline OCR', visionError);
+                await performOfflineOCR(base64Image);
+            }
         } finally {
             setIsReadingImage(false);
         }
