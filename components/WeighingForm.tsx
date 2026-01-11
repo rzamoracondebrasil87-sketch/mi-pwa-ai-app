@@ -323,15 +323,10 @@ export const WeighingForm: React.FC = () => {
                 }
             };
 
-            const response = await ai.models.generateContent({
-                model: 'gemini-2.0-flash', 
-                contents: { parts: [imagePart, { text: prompt }] },
-                config: {
-                    responseMimeType: 'application/json'
-                }
-            });
-
-            const text = response.text;
+            const text = await analyzeImageWithGemini(
+                base64Image.split(',')[1],
+                prompt
+            );
             if (text) {
                 console.log("AI Raw Response:", text);
                 let jsonString = text.replace(/```json/g, '').replace(/```/g, '').trim();
@@ -468,11 +463,8 @@ export const WeighingForm: React.FC = () => {
             Give a short, direct action instruction (max 15 words) in ${t('ai_prompt_lang')}.
             `;
             
-            const response = await ai.models.generateContent({
-                model: 'gemini-2.0-flash',
-                contents: prompt
-            });
-            setAiAlert(response.text?.trim() || "Revisado.");
+            const result = await callGeminiAPI(prompt);
+            setAiAlert(result?.trim() || "Revisado.");
         } catch (e) {
             setAiAlert("Offline.");
         } finally {
