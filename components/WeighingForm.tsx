@@ -382,8 +382,25 @@ export const WeighingForm: React.FC = () => {
         setIsReadingImage(true);
         setAiAlert(null);
         
-        // Try Online AI First
+        const base64 = base64Image.includes(',') ? base64Image.split(',')[1] : base64Image;
+        
+        // 1. Try Google Vision API first (most reliable for OCR)
         try {
+            console.log('Attempting Google Vision API...');
+            const visionText = await analyzeImageWithVision(base64);
+            if (visionText) {
+                console.log('Vision API Text:', visionText);
+                parseOCRText(visionText);
+                setIsReadingImage(false);
+                return;
+            }
+        } catch (visionError) {
+            console.warn('Vision API failed:', visionError);
+        }
+        
+        // 2. Try Gemini (with rotation) if Vision didn't work
+        try {
+            console.log('Attempting Gemini API...');
             const prompt = `
             Analyze this image of a product label.
             
@@ -406,19 +423,9 @@ export const WeighingForm: React.FC = () => {
             }.
             `;
 
-            const imagePart = {
-                inlineData: {
-                    mimeType: 'image/jpeg',
-                    data: base64Image.split(',')[1]
-                }
-            };
-
-            const text = await analyzeImageWithGemini(
-                base64Image.split(',')[1],
-                prompt
-            );
+            const text = await analyzeImageWithGemini(base64, prompt);
             if (text) {
-                console.log("AI Raw Response:", text);
+                console.log("Gemini Raw Response:", text);
                 let jsonString = text.replace(/```json/g, '').replace(/```/g, '').trim();
                 const firstBrace = jsonString.indexOf('{');
                 const lastBrace = jsonString.lastIndexOf('}');
@@ -456,7 +463,6 @@ export const WeighingForm: React.FC = () => {
                     if (data.expiration) parts.push(`${t('ph_expiration').toLowerCase()} ${data.expiration}`);
                     if (normalizedTara !== null) parts.push(`tara ${normalizedTara}g`);
 
-                    // Check risk
                     const riskMsg = data.expiration ? checkExpirationRisk(data.expiration) : null;
                     
                     if (riskMsg) {
@@ -465,30 +471,27 @@ export const WeighingForm: React.FC = () => {
                         setAiAlert(`📷 ${parts.join(', ')}.`);
                     }
 
+                    setIsReadingImage(false);
+                    return;
+
                 } catch (parseError) {
-                    throw new Error("JSON Parse Error");
+                    console.warn('Gemini JSON parse failed, trying Offline OCR:', parseError);
                 }
             }
-        } catch (error: any) {
-            console.warn("AI Vision Failed, attempting Vision API then Offline OCR...", error);
-            // If quota / rate-limit error from Gemini, surface clearer message to user
-            if (error?.message && /quota|rate limit|429|exceeded/i.test(error.message)) {
-                setAiAlert("Error de cuota en Gemini: activa billing o usa otra clave. Intentando alternativas...");
+        } catch (geminiError: any) {
+            console.warn('Gemini failed, attempting Offline OCR...', geminiError);
+            if (geminiError?.message && /quota|rate limit|429|exceeded/i.test(geminiError.message)) {
+                setAiAlert("Error de cuota en APIs remotas. Usando OCR local...");
             }
-            // First try Google Vision if configured
-            try {
-                const base64 = base64Image.includes(',') ? base64Image.split(',')[1] : base64Image;
-                const visionText = await analyzeImageWithVision(base64);
-                if (visionText) {
-                    console.log('Vision API Text:', visionText);
-                    parseOCRText(visionText);
-                } else {
-                    await performOfflineOCR(base64Image);
-                }
-            } catch (visionError) {
-                console.warn('Vision API failed, falling back to offline OCR', visionError);
-                await performOfflineOCR(base64Image);
-            }
+        }
+        
+        // 3. Fallback to Offline OCR
+        try {
+            console.log('Attempting Offline OCR (fallback)...');
+            await performOfflineOCR(base64Image);
+        } catch (ocrError) {
+            console.error('Offline OCR error:', ocrError);
+            setAiAlert("Error en lectura local. Ingresa datos manualmente.");
         } finally {
             setIsReadingImage(false);
         }
