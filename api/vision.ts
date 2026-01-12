@@ -3,59 +3,58 @@ import { VercelRequest, VercelResponse } from '@vercel/node';
 /**
  * Vercel API endpoint para Google Cloud Vision Text Detection
  * Usa Service Account autenticado por credenciales en variable de entorno GOOGLE_CLOUD_CREDENTIALS
- * 
- * Espera:
- *   POST /api/vision
- *   Body: { imageBase64: "..." }
- * 
- * Devuelve:
- *   { text: "..." } o error
  */
 
 async function getAccessToken(credentials: any): Promise<string> {
-  const crypto = require('crypto');
-  
-  // Crear JWT
-  const header = {
-    alg: 'RS256',
-    typ: 'JWT',
-  };
+  try {
+    const crypto = require('crypto');
+    
+    // Crear JWT header y payload
+    const header = Buffer.from(JSON.stringify({
+      alg: 'RS256',
+      typ: 'JWT',
+    })).toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
 
-  const payload = {
-    iss: credentials.client_email,
-    scope: 'https://www.googleapis.com/auth/cloud-vision',
-    aud: 'https://oauth2.googleapis.com/token',
-    exp: Math.floor(Date.now() / 1000) + 3600,
-    iat: Math.floor(Date.now() / 1000),
-  };
+    const iat = Math.floor(Date.now() / 1000);
+    const payload = Buffer.from(JSON.stringify({
+      iss: credentials.client_email,
+      scope: 'https://www.googleapis.com/auth/cloud-vision',
+      aud: 'https://oauth2.googleapis.com/token',
+      exp: iat + 3600,
+      iat: iat,
+    })).toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
 
-  const encode = (obj: any) => Buffer.from(JSON.stringify(obj)).toString('base64url');
-  const header_encoded = encode(header);
-  const payload_encoded = encode(payload);
-  const signature_input = `${header_encoded}.${payload_encoded}`;
+    const signature_input = `${header}.${payload}`;
 
-  // Sign with private key
-  const key = credentials.private_key;
-  const signature = crypto
-    .createSign('RSA-SHA256')
-    .update(signature_input)
-    .sign(key, 'base64url');
+    // Firmar con la clave privada
+    const signature = crypto
+      .createSign('RSA-SHA256')
+      .update(signature_input)
+      .sign(credentials.private_key, 'base64')
+      .replace(/=/g, '')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_');
 
-  const jwt = `${signature_input}.${signature}`;
+    const jwt = `${signature_input}.${signature}`;
 
-  // Exchange JWT for access token
-  const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${jwt}`,
-  });
+    // Obtener access token
+    const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${jwt}`,
+    });
 
-  const tokenData: any = await tokenResponse.json();
-  if (!tokenData.access_token) {
-    throw new Error('Failed to obtain access token');
+    const tokenData: any = await tokenResponse.json();
+    
+    if (!tokenData.access_token) {
+      throw new Error(`Token error: ${JSON.stringify(tokenData)}`);
+    }
+
+    return tokenData.access_token;
+  } catch (error) {
+    console.error('Token generation error:', error);
+    throw error;
   }
-
-  return tokenData.access_token;
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -69,21 +68,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: 'imageBase64 required in body' });
     }
 
-    // Obtener credenciales de Service Account desde variable de entorno (base64-encoded)
+    // Obtener credenciales de Service Account
     const credentialsBase64 = process.env.GOOGLE_CLOUD_CREDENTIALS;
     if (!credentialsBase64) {
       console.error('GOOGLE_CLOUD_CREDENTIALS not configured');
       return res.status(500).json({ error: 'Vision credentials not configured' });
     }
 
-    // Decodificar y parsear credenciales
+    // Decodificar credenciales
     const credentialsJson = Buffer.from(credentialsBase64, 'base64').toString('utf-8');
     const credentials = JSON.parse(credentialsJson);
 
+    console.log('Credentials loaded for:', credentials.client_email);
+
     // Obtener access token
     const accessToken = await getAccessToken(credentials);
+    console.log('Access token obtained');
 
-    // Llamar a Vision API con REST
+    // Llamar a Vision API
     const visionResponse = await fetch('https://vision.googleapis.com/v1/images:annotate', {
       method: 'POST',
       headers: {
@@ -100,12 +102,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }),
     });
 
+    console.log('Vision response status:', visionResponse.status);
+
     if (!visionResponse.ok) {
-      const errorData = await visionResponse.json();
-      console.error('Vision API error:', errorData);
+      const errorText = await visionResponse.text();
+      console.error('Vision API error:', errorText);
       return res.status(visionResponse.status).json({
         error: 'Vision API error',
-        message: errorData?.error?.message || visionResponse.statusText,
+        message: errorText,
       });
     }
 
@@ -113,10 +117,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const annotation = data.responses?.[0];
     const fullText = annotation?.fullTextAnnotation?.text || (annotation?.textAnnotations?.[0]?.description) || '';
 
+    console.log('Vision text extracted, length:', fullText.length);
     return res.status(200).json({ text: fullText });
-  } catch (error) {
-    console.error('Vision API error:', error);
-    const message = error instanceof Error ? error.message : 'Unknown error';
-    return res.status(500).json({ error: message });
+    
+  } catch (error: any) {
+    console.error('Vision API endpoint error:', error);
+    return res.status(500).json({ 
+      error: 'Vision API error',
+      message: error?.message || 'Unknown error',
+    });
   }
 }
