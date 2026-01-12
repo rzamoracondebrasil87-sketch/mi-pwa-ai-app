@@ -12,6 +12,30 @@ import { logger } from '../services/logger';
 // Use stable model for reliable production vision
 const TOLERANCE_KG = 0.2;
 
+// Helper: Parse multiple weights separated by commas
+const parseGrossWeightInput = (input: string): { total: number; details?: number[] } => {
+    if (!input.trim()) return { total: 0 };
+    
+    // Check if input contains commas (multiple values)
+    if (input.includes(',')) {
+        const parts = input.split(',').map(s => parseFloat(s.trim()));
+        const validParts = parts.filter(v => !isNaN(v) && v > 0);
+        
+        if (validParts.length > 0) {
+            const total = parseFloat(validParts.reduce((a, b) => a + b, 0).toFixed(2));
+            return { total, details: validParts };
+        }
+    }
+    
+    // Single value
+    const single = parseFloat(input);
+    if (!isNaN(single) && single > 0) {
+        return { total: single };
+    }
+    
+    return { total: 0 };
+};
+
 export const WeighingForm: React.FC = () => {
     const { t, language } = useTranslation();
     const { showToast } = useToast();
@@ -61,7 +85,7 @@ export const WeighingForm: React.FC = () => {
         setSuggestions({ products: kb.products, suppliers: kb.suppliers });
     }, []);
 
-    // Auto-collapse Tara section logic
+    // Auto-collapse Tara section logic AND extended auto-focus to Gross Weight
     useEffect(() => {
         // Only run if boxes are shown and user has typed a quantity
         if (!showBoxes || !boxQty) return;
@@ -80,6 +104,17 @@ export const WeighingForm: React.FC = () => {
 
         return () => clearTimeout(timer);
     }, [boxQty, showBoxes, noteWeight]);
+
+    // Auto-focus from Note Weight to Gross Weight (extended behavior)
+    useEffect(() => {
+        if (!noteWeight || grossWeight) return; // Only if Note is filled but Gross is empty
+        
+        const timer = setTimeout(() => {
+            grossInputRef.current?.focus();
+        }, 1200); // Same timing as Tara->Note
+
+        return () => clearTimeout(timer);
+    }, [noteWeight, grossWeight]);
 
     // Reactive Assistant Logic
     useEffect(() => {
@@ -110,7 +145,8 @@ export const WeighingForm: React.FC = () => {
 
     const boxTaraKg = Number(boxTara) / 1000;
     const totalTara = (Number(boxQty) * boxTaraKg);
-    const netWeight = (Number(grossWeight) || 0) - totalTara;
+    const grossWeightParsed = parseGrossWeightInput(grossWeight);
+    const netWeight = (grossWeightParsed.total || 0) - totalTara;
     const difference = netWeight - (Number(noteWeight) || 0);
 
     const updateAssistantVoice = () => {
@@ -626,11 +662,12 @@ export const WeighingForm: React.FC = () => {
             batch: batch || undefined,
             expirationDate: expirationDate || undefined,
             productionDate: productionDate || undefined,
-            grossWeight: Number(grossWeight),
+            grossWeight: grossWeightParsed.total,
             noteWeight: Number(noteWeight),
             netWeight,
             taraTotal: totalTara,
             boxes: { qty: Number(boxQty), unitTara: boxTaraKg },
+            grossWeightDetails: grossWeightParsed.details,
             status: Math.abs(difference) > TOLERANCE_KG ? 'error' : 'verified',
             aiAnalysis: aiAlert || undefined,
             evidence: evidence || undefined
@@ -951,7 +988,7 @@ export const WeighingForm: React.FC = () => {
                              <div className="flex items-baseline gap-1">
                                 <input 
                                     ref={grossInputRef}
-                                    type="number" 
+                                    type="text" 
                                     value={grossWeight}
                                     onChange={e => setGrossWeight(e.target.value)}
                                     onFocus={() => {
@@ -959,10 +996,15 @@ export const WeighingForm: React.FC = () => {
                                         setShowBoxes(false); // Auto-collapse tara when moving to gross weight
                                     }}
                                     className="w-full bg-transparent text-3xl font-black text-slate-800 dark:text-white outline-none placeholder:text-slate-300 dark:placeholder:text-slate-700 font-mono tracking-tight"
-                                    placeholder="0"
+                                    placeholder="0 o 50, 52, 49"
                                 />
                                 <span className="text-sm text-slate-400 dark:text-slate-600 font-bold">kg</span>
                             </div>
+                            {grossWeight.includes(',') && (
+                                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                                    Total: {parseGrossWeightInput(grossWeight).total} kg
+                                </p>
+                            )}
                         </div>
                     </div>
                 </div>

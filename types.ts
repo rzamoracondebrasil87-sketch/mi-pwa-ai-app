@@ -23,6 +23,7 @@ export interface WeighingRecord {
     batch?: string; // Lote do produto
     expirationDate?: string; // Data de validade
     productionDate?: string; // Data de fabricação
+    grossWeightDetails?: number[]; // Array of individual weights if entered as comma-separated
 }
 
 export interface KnowledgeBase {
