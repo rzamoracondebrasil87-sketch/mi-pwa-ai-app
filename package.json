@@ -13,7 +13,6 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "@google-cloud/vision": "^4.7.0",
     "@vercel/node": "^3.2.3",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
