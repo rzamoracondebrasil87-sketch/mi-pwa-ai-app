@@ -46,6 +46,8 @@ export const WeighingForm: React.FC = () => {
     const [batch, setBatch] = useState('');
     const [expirationDate, setExpirationDate] = useState('');
     const [productionDate, setProductionDate] = useState('');
+    const [temperature, setTemperature] = useState<string>('');
+    const [temperatureSuggestion, setTemperatureSuggestion] = useState<number | null>(null);
     const [grossWeight, setGrossWeight] = useState<string>('');
     const [noteWeight, setNoteWeight] = useState<string>('');
     const [evidence, setEvidence] = useState<string | null>(null); // Base64 image
@@ -53,7 +55,9 @@ export const WeighingForm: React.FC = () => {
     // Collapsible sections
     const [showBoxes, setShowBoxes] = useState(false);
     const [boxQty, setBoxQty] = useState<string>('');
-    const [boxTara, setBoxTara] = useState<string>(''); 
+    const [boxTara, setBoxTara] = useState<string>('');
+    const [boxQtyEmbalaje, setBoxQtyEmbalaje] = useState<string>('');
+    const [boxTaraEmbalaje, setBoxTaraEmbalaje] = useState<string>(''); 
     
     // Refs for auto-focus and file inputs
     const noteInputRef = useRef<HTMLInputElement>(null);
@@ -144,7 +148,8 @@ export const WeighingForm: React.FC = () => {
     }, [supplier, product, grossWeight, noteWeight, boxQty, boxTara, language]);
 
     const boxTaraKg = Number(boxTara) / 1000;
-    const totalTara = (Number(boxQty) * boxTaraKg);
+    const boxTaraEmbalajeKg = Number(boxTaraEmbalaje) / 1000;
+    const totalTara = (Number(boxQty) * boxTaraKg) + (Number(boxQtyEmbalaje) * boxTaraEmbalajeKg);
     const grossWeightParsed = parseGrossWeightInput(grossWeight);
     const netWeight = (grossWeightParsed.total || 0) - totalTara;
     const difference = netWeight - (Number(noteWeight) || 0);
@@ -662,11 +667,14 @@ export const WeighingForm: React.FC = () => {
             batch: batch || undefined,
             expirationDate: expirationDate || undefined,
             productionDate: productionDate || undefined,
+            temperature: temperature ? Number(temperature) : undefined,
+            temperatureSuggestion,
             grossWeight: grossWeightParsed.total,
             noteWeight: Number(noteWeight),
             netWeight,
             taraTotal: totalTara,
             boxes: { qty: Number(boxQty), unitTara: boxTaraKg },
+            taraEmbalaje: { qty: Number(boxQtyEmbalaje), unitTara: boxTaraEmbalajeKg },
             grossWeightDetails: grossWeightParsed.details,
             status: Math.abs(difference) > TOLERANCE_KG ? 'error' : 'verified',
             aiAnalysis: aiAlert || undefined,
@@ -679,10 +687,14 @@ export const WeighingForm: React.FC = () => {
         setBatch('');
         setExpirationDate('');
         setProductionDate('');
+        setTemperature('');
+        setTemperatureSuggestion(null);
         setGrossWeight('');
         setNoteWeight('');
         setBoxQty('');
         setBoxTara('');
+        setBoxQtyEmbalaje('');
+        setBoxTaraEmbalaje('');
         setEvidence(null);
         setAiAlert(null);
         trackEvent('weighing_saved', { netWeight });
@@ -722,6 +734,50 @@ export const WeighingForm: React.FC = () => {
             setAiAlert(result?.trim() || "Revisado.");
         } catch (e) {
             setAiAlert("Offline.");
+        } finally {
+            setIsAnalyzing(false);
+        }
+    };
+
+    const suggestTemperature = async () => {
+        if (!product) {
+            showToast('Ingresa producto primero', 'info');
+            return;
+        }
+
+        setIsAnalyzing(true);
+        try {
+            const month = new Date().getMonth() + 1;
+            const season = month >= 3 && month <= 8 ? 'verano (cálido)' : 'invierno (frío)';
+            
+            const prompt = `Eres experto en almacenamiento y logística de productos alimentarios.
+            
+Producto: ${product}
+Proveedor: ${supplier || 'N/A'}
+Temporada actual: ${season}
+Fecha de vencimiento: ${expirationDate || 'N/A'}
+
+Sugiere UNA temperatura óptima (en °C) para almacenar este producto, considerando:
+- Tipo de producto
+- Temporada/clima
+- Regulaciones internacionales
+
+RESPONDE SOLO UN NÚMERO (ej: 18 o 12), sin explicación.`;
+
+            const result = await callGeminiAPI(prompt);
+            const temp = parseInt(result?.trim() || '0');
+            
+            if (temp > 0 && temp < 50) {
+                setTemperatureSuggestion(temp);
+                setTemperature(temp.toString());
+                showToast(`Temperatura sugerida: ${temp}°C`, 'success');
+            } else {
+                setTemperatureSuggestion(null);
+                showToast('No se pudo sugerir temperatura', 'error');
+            }
+        } catch (e) {
+            logger.error('Temperature suggestion error:', e);
+            showToast('Error al sugerir temperatura', 'error');
         } finally {
             setIsAnalyzing(false);
         }
@@ -953,6 +1009,29 @@ export const WeighingForm: React.FC = () => {
                                 />
                             </div>
                         </div>
+
+                        <div className="flex items-center gap-2 bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-transparent rounded-2xl px-3 py-3 focus-within:ring-4 focus-within:ring-primary-100 dark:focus-within:ring-primary-900/20 transition-all group">
+                            <span className="material-icons-round text-slate-400 dark:text-slate-500 text-lg pointer-events-none">thermostat</span>
+                            <input 
+                                type="number" 
+                                value={temperature}
+                                onChange={e => setTemperature(e.target.value)}
+                                placeholder="Temperatura (°C)"
+                                min="0"
+                                max="50"
+                                className="w-full bg-transparent text-slate-800 dark:text-white font-bold text-base outline-none placeholder:text-slate-300 dark:placeholder:text-slate-600"
+                            />
+                            <span className="text-slate-400 dark:text-slate-500 font-bold text-sm">°C</span>
+                            <button
+                                type="button"
+                                onClick={suggestTemperature}
+                                disabled={isAnalyzing || !product}
+                                className={`p-1.5 rounded-lg transition-all ${temperatureSuggestion ? 'bg-primary-100 dark:bg-primary-500/20 text-primary-600 dark:text-primary-300' : 'hover:bg-slate-200 dark:hover:bg-white/10 text-slate-400 dark:text-slate-500'}`}
+                                title="Sugerir temperatura con IA"
+                            >
+                                <span className="material-icons-round text-base pointer-events-none">auto_awesome</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1064,26 +1143,63 @@ export const WeighingForm: React.FC = () => {
                             </button>
                         )}
                         
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="bg-slate-50 dark:bg-black/20 rounded-3xl p-4 border border-slate-100 dark:border-transparent">
-                                <label className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase mb-2 block text-center">{t('lbl_unit_weight')}</label>
-                                <input 
-                                    type="number" 
-                                    value={boxTara} 
-                                    onChange={e => setBoxTara(e.target.value)} 
-                                    className="w-full bg-white dark:bg-slate-800 border-none rounded-2xl px-3 py-3 text-lg focus:ring-4 focus:ring-primary-100 dark:focus:ring-primary-900/20 outline-none transition-all font-mono font-bold text-center text-slate-800 dark:text-white shadow-sm" 
-                                    placeholder="0" 
-                                />
+                        {/* Cajas (Left Column) */}
+                        <div className="space-y-3 pb-4 border-b border-slate-200 dark:border-slate-700/50">
+                            <h4 className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wide flex items-center gap-2">
+                                <span className="material-icons-round text-sm">inventory_2</span>
+                                Cajas
+                            </h4>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="bg-slate-50 dark:bg-black/20 rounded-3xl p-4 border border-slate-100 dark:border-transparent">
+                                    <label className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase mb-2 block text-center">{t('lbl_unit_weight')}</label>
+                                    <input 
+                                        type="number" 
+                                        value={boxTara} 
+                                        onChange={e => setBoxTara(e.target.value)} 
+                                        className="w-full bg-white dark:bg-slate-800 border-none rounded-2xl px-3 py-3 text-lg focus:ring-4 focus:ring-primary-100 dark:focus:ring-primary-900/20 outline-none transition-all font-mono font-bold text-center text-slate-800 dark:text-white shadow-sm" 
+                                        placeholder="0" 
+                                    />
+                                </div>
+                                <div className="bg-slate-50 dark:bg-black/20 rounded-3xl p-4 border border-slate-100 dark:border-transparent">
+                                    <label className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase mb-2 block text-center">{t('lbl_qty')}</label>
+                                    <input 
+                                        type="number" 
+                                        value={boxQty} 
+                                        onChange={e => setBoxQty(e.target.value)} 
+                                        className="w-full bg-white dark:bg-slate-800 border-none rounded-2xl px-3 py-3 text-lg focus:ring-4 focus:ring-primary-100 dark:focus:ring-primary-900/20 outline-none transition-all font-mono font-bold text-center text-slate-800 dark:text-white shadow-sm" 
+                                        placeholder="0" 
+                                    />
+                                </div>
                             </div>
-                            <div className="bg-slate-50 dark:bg-black/20 rounded-3xl p-4 border border-slate-100 dark:border-transparent">
-                                <label className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase mb-2 block text-center">{t('lbl_qty')}</label>
-                                <input 
-                                    type="number" 
-                                    value={boxQty} 
-                                    onChange={e => setBoxQty(e.target.value)} 
-                                    className="w-full bg-white dark:bg-slate-800 border-none rounded-2xl px-3 py-3 text-lg focus:ring-4 focus:ring-primary-100 dark:focus:ring-primary-900/20 outline-none transition-all font-mono font-bold text-center text-slate-800 dark:text-white shadow-sm" 
-                                    placeholder="0" 
-                                />
+                        </div>
+
+                        {/* Embalajes (Right Column) */}
+                        <div className="space-y-3">
+                            <h4 className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wide flex items-center gap-2">
+                                <span className="material-icons-round text-sm">layers</span>
+                                Embalajes
+                            </h4>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="bg-slate-50 dark:bg-black/20 rounded-3xl p-4 border border-slate-100 dark:border-transparent">
+                                    <label className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase mb-2 block text-center">{t('lbl_unit_weight')}</label>
+                                    <input 
+                                        type="number" 
+                                        value={boxTaraEmbalaje} 
+                                        onChange={e => setBoxTaraEmbalaje(e.target.value)} 
+                                        className="w-full bg-white dark:bg-slate-800 border-none rounded-2xl px-3 py-3 text-lg focus:ring-4 focus:ring-primary-100 dark:focus:ring-primary-900/20 outline-none transition-all font-mono font-bold text-center text-slate-800 dark:text-white shadow-sm" 
+                                        placeholder="0" 
+                                    />
+                                </div>
+                                <div className="bg-slate-50 dark:bg-black/20 rounded-3xl p-4 border border-slate-100 dark:border-transparent">
+                                    <label className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase mb-2 block text-center">{t('lbl_qty')}</label>
+                                    <input 
+                                        type="number" 
+                                        value={boxQtyEmbalaje} 
+                                        onChange={e => setBoxQtyEmbalaje(e.target.value)} 
+                                        className="w-full bg-white dark:bg-slate-800 border-none rounded-2xl px-3 py-3 text-lg focus:ring-4 focus:ring-primary-100 dark:focus:ring-primary-900/20 outline-none transition-all font-mono font-bold text-center text-slate-800 dark:text-white shadow-sm" 
+                                        placeholder="0" 
+                                    />
+                                </div>
                             </div>
                         </div>
                     </div>

@@ -2,7 +2,8 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { InstallManager } from './components/InstallManager';
 import { WeighingForm } from './components/WeighingForm';
-import { WeighingAssistant } from './components/WeighingAssistant';
+import { GlobalWeighingChat } from './components/GlobalWeighingChat';
+import { useWakeLock } from './hooks/useWakeLock';
 import { getRecords, deleteRecord, clearAllRecords, getUserProfile, saveUserProfile, getTheme, saveTheme } from './services/storageService';
 import { WeighingRecord, Language, UserProfile } from './types';
 import { LanguageProvider, useTranslation } from './services/i18n';
@@ -25,6 +26,9 @@ const MainLayout: React.FC = () => {
     const { showToast } = useToast();
     const [activeTab, setActiveTab] = useState<'weigh' | 'history'>('weigh');
     
+    // Enable wake lock to prevent screen sleep
+    useWakeLock();
+    
     // Theme State
     const [isDarkMode, setIsDarkMode] = useState(getTheme() === 'dark');
 
@@ -36,9 +40,8 @@ const MainLayout: React.FC = () => {
     const [viewingEvidence, setViewingEvidence] = useState<string | null>(null);
     const [whatsappModalOpen, setWhatsappModalOpen] = useState(false);
     const [profileModalOpen, setProfileModalOpen] = useState(false);
-    const [assistantOpen, setAssistantOpen] = useState(false);
+    const [globalChatOpen, setGlobalChatOpen] = useState(false);
     const [selectedRecordForWhatsapp, setSelectedRecordForWhatsapp] = useState<WeighingRecord | null>(null);
-    const [selectedRecordForAssistant, setSelectedRecordForAssistant] = useState<WeighingRecord | undefined>(undefined);
     
     const [records, setRecords] = useState<WeighingRecord[]>([]);
     const [userProfile, setUserProfile] = useState<UserProfile>(getUserProfile());
@@ -614,8 +617,19 @@ ${record.evidence ? '📸 [FOTO]' : ''}`;
 
                                                     <div className="flex flex-col">
                                                         <span className="text-[9px] uppercase text-slate-400 dark:text-slate-500 font-bold mb-1 tracking-wider">Tara</span>
-                                                        <div className="flex items-center justify-center gap-1">
-                                                            <span className="material-icons-round text-sm text-slate-500 dark:text-slate-400 pointer-events-none">inventory_2</span>
+                                                        <div className="flex flex-col items-center justify-center gap-0.5">
+                                                            {record.boxes && record.boxes.qty > 0 && (
+                                                                <div className="text-xs font-medium text-slate-600 dark:text-slate-300 flex items-center gap-1">
+                                                                    <span className="text-sm">📦</span>
+                                                                    <span>{record.boxes.qty} × {record.boxes.unitTara}g</span>
+                                                                </div>
+                                                            )}
+                                                            {record.taraEmbalaje && record.taraEmbalaje.qty > 0 && (
+                                                                <div className="text-xs font-medium text-slate-600 dark:text-slate-300 flex items-center gap-1">
+                                                                    <span className="text-sm">📋</span>
+                                                                    <span>{record.taraEmbalaje.qty} × {record.taraEmbalaje.unitTara}g</span>
+                                                                </div>
+                                                            )}
                                                             <span className="font-mono font-bold text-slate-700 dark:text-slate-200 text-lg">{record.taraTotal.toFixed(1)}<span className="text-xs text-slate-500 dark:text-slate-400 ml-0.5">kg</span></span>
                                                         </div>
                                                     </div>
@@ -637,15 +651,6 @@ ${record.evidence ? '📸 [FOTO]' : ''}`;
                                                                 {diff > 0 ? '+' : ''}{diff.toFixed(2)}
                                                             </span>
                                                         </div>
-
-                                                        <button 
-                                                            onClick={(e) => { e.stopPropagation(); setSelectedRecordForAssistant(record); setAssistantOpen(true); }}
-                                                            className="w-10 h-10 bg-slate-100 dark:bg-white/10 hover:bg-primary-100 dark:hover:bg-primary-900/30 text-slate-400 dark:text-slate-300 hover:text-primary-600 dark:hover:text-primary-400 rounded-full flex items-center justify-center transition-all cursor-pointer"
-                                                            title="Asistente"
-                                                            type="button"
-                                                        >
-                                                            <span className="material-icons-round text-lg pointer-events-none">smart_toy</span>
-                                                        </button>
 
                                                         {record.evidence && (
                                                             <button 
@@ -712,12 +717,13 @@ ${record.evidence ? '📸 [FOTO]' : ''}`;
                 </button>
             </nav>
 
-            {/* Weighting Assistant Modal */}
-            <WeighingAssistant 
-                record={selectedRecordForAssistant}
-                isOpen={assistantOpen}
-                onClose={() => setAssistantOpen(false)}
-            />
+            {/* Global Weighting Chat (only visible in history tab) */}
+            {activeTab === 'history' && (
+                <GlobalWeighingChat 
+                    isVisible={globalChatOpen}
+                    onToggle={() => setGlobalChatOpen(!globalChatOpen)}
+                />
+            )}
         </div>
     );
 };

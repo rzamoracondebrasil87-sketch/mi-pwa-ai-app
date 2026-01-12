@@ -17,6 +17,9 @@ export interface WeighingRecord {
     netWeight: number;   // Peso Liquido
     taraTotal: number;
     boxes: { qty: number; unitTara: number };
+    taraEmbalaje?: { qty: number; unitTara: number }; // Segunda tara de embalaje
+    temperature?: number; // Temperatura en °C
+    temperatureSuggestion?: number; // IA sugiere temperatura óptima
     status: 'pending' | 'verified' | 'error';
     aiAnalysis?: string;
     evidence?: string; // Base64 string of the image
