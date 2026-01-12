@@ -221,8 +221,25 @@ export const WeighingForm: React.FC = () => {
 
     // OCR Interpretation Module (Tesseract offline)
     const ocrInterpret = (text: string): Record<string, any> => {
-        const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
-        const cleanText = text.toLowerCase();
+        // ==================== TEXT PREPROCESSING ====================
+        // Remove common OCR noise patterns
+        let cleanedText = text
+            // Remove common OCR artifacts
+            .replace(/[|\/\\=\-\+\*]{3,}/g, ' ') // Remove lines of symbols
+            .replace(/[^\w\s\/\.\-,%;]/g, ' ') // Keep only alphanumeric, space, and important symbols
+            .replace(/\s+/g, ' ') // Normalize whitespace
+            .replace(/(\d)\s+([a-z])/g, '$1$2') // Fix "18 000" -> "18000"
+            .toLowerCase();
+
+        const lines = cleanedText.split('\n').map(l => l.trim()).filter(l => {
+            // Filter out garbage lines (too short, all digits, or obvious noise)
+            if (l.length < 2) return false;
+            if (/^\d+$/.test(l)) return false;
+            if (/^[!@#$%^&*()]{2,}/.test(l)) return false;
+            // Skip lines that are just repetitive characters
+            if (/(.)\1{3,}/.test(l)) return false;
+            return true;
+        });
 
         const result = {
             product: 'review',
@@ -238,7 +255,7 @@ export const WeighingForm: React.FC = () => {
 
         // ==================== DATE DETECTION ====================
         const dateRegex = /(\d{2})[\/\-.](\d{2})[\/\-.](\d{2,4})/g;
-        const dateMatches = [...cleanText.matchAll(dateRegex)].map(m => ({
+        const dateMatches = [...cleanedText.matchAll(dateRegex)].map(m => ({
             raw: m[0],
             day: m[1],
             month: m[2],
@@ -246,26 +263,33 @@ export const WeighingForm: React.FC = () => {
             index: m.index || 0,
         }));
 
+        // Filter out invalid month/day combos
+        const validDateMatches = dateMatches.filter(d => {
+            const month = parseInt(d.month);
+            const day = parseInt(d.day);
+            return month >= 1 && month <= 12 && day >= 1 && day <= 31;
+        });
+
         const normalizeDate = (dateObj: any) => `${dateObj.day}/${dateObj.month}/${dateObj.year}`;
 
         // Production date: look for FAB/PROD keywords first
-        const prodKeywordMatch = cleanText.match(/(fab|fabr|man|prod|fabricacao|data de fab)[\s\.:-]*([\d\/\-\.]{6,10})/);
-        if (prodKeywordMatch && dateMatches.length > 0) {
-            const prodMatch = dateMatches.find(d => prodKeywordMatch[2].includes(d.raw));
+        const prodKeywordMatch = cleanedText.match(/(fab|fabr|man|prod|fabricacao|data de fab)[\s\.:-]*([\d\/\-\.]{6,10})/);
+        if (prodKeywordMatch && validDateMatches.length > 0) {
+            const prodMatch = validDateMatches.find(d => prodKeywordMatch[2].includes(d.raw));
             if (prodMatch) result.manufacturing_date = normalizeDate(prodMatch);
-            else if (dateMatches.length > 0) result.manufacturing_date = normalizeDate(dateMatches[0]);
-        } else if (dateMatches.length > 0) {
-            result.manufacturing_date = normalizeDate(dateMatches[0]);
+            else if (validDateMatches.length > 0) result.manufacturing_date = normalizeDate(validDateMatches[0]);
+        } else if (validDateMatches.length > 0) {
+            result.manufacturing_date = normalizeDate(validDateMatches[0]);
         }
 
         // Expiration date: look for VAL/VENC/EXP keywords first
-        const expKeywordMatch = cleanText.match(/(val|venc|exp|validade|vencimento)[\s\.:-]*([\d\/\-\.]{6,10})/);
-        if (expKeywordMatch && dateMatches.length > 0) {
-            const expMatch = dateMatches.find(d => expKeywordMatch[2].includes(d.raw));
+        const expKeywordMatch = cleanedText.match(/(val|venc|exp|validade|vencimento)[\s\.:-]*([\d\/\-\.]{6,10})/);
+        if (expKeywordMatch && validDateMatches.length > 0) {
+            const expMatch = validDateMatches.find(d => expKeywordMatch[2].includes(d.raw));
             if (expMatch) result.expiration_date = normalizeDate(expMatch);
-            else if (dateMatches.length > 1) result.expiration_date = normalizeDate(dateMatches[dateMatches.length - 1]);
-        } else if (dateMatches.length > 1) {
-            result.expiration_date = normalizeDate(dateMatches[dateMatches.length - 1]);
+            else if (validDateMatches.length > 1) result.expiration_date = normalizeDate(validDateMatches[validDateMatches.length - 1]);
+        } else if (validDateMatches.length > 1) {
+            result.expiration_date = normalizeDate(validDateMatches[validDateMatches.length - 1]);
         }
 
         // ==================== BATCH / LOT DETECTION ====================
@@ -288,7 +312,7 @@ export const WeighingForm: React.FC = () => {
         }
 
         // ==================== TARE DETECTION ====================
-        const taraKeywordLine = lines.find(l => /\b(tara|t:|t\.|emb|packaging|peso vazio)\b/i.test(l));
+        const taraKeywordLine = lines.find(l => /\b(tara|t:|t\.|emb|packaging|peso vazio|vazio)\b/i.test(l));
         if (taraKeywordLine) {
             const taraMatch = taraKeywordLine.match(/(\d+[\.,]?\d*)\s*(g|kg|ml)?/i);
             if (taraMatch) {
@@ -301,29 +325,52 @@ export const WeighingForm: React.FC = () => {
                 }
             }
         } else {
-            // Fallback: find smallest reasonable weight
-            const weightRegex = /(\d+[\.,]?\d*)\s*(g|kg|ml)\b/gi;
-            const weights: number[] = [];
-            for (const match of cleanText.matchAll(weightRegex)) {
+            // Fallback: find smallest reasonable weight (but not too small)
+            const weightRegex = /(\d+[\.,]?\d*)\s*(g|kg|ml)?/gi;
+            const weights: Array<{val: number, unit: string}> = [];
+            for (const match of cleanedText.matchAll(weightRegex)) {
                 let val = parseFloat(match[1].replace(',', '.'));
                 const unit = (match[2] || '').toLowerCase();
                 if (unit === 'g' || (!unit && val > 100)) val = val / 1000;
-                if (val > 0 && val < 100) weights.push(val);
+                if (val > 0.01 && val < 100) weights.push({val, unit: unit || 'kg'});
             }
-            if (weights.length > 0) {
-                result.tare_kg = parseFloat(Math.min(...weights).toFixed(3));
+            // Find smallest weight (most likely tara)
+            if (weights.length > 1) {
+                const smallest = weights.reduce((a, b) => a.val < b.val ? a : b);
+                if (smallest.val > 0.1 && smallest.val < 20) {
+                    result.tare_kg = parseFloat(smallest.val.toFixed(3));
+                }
             }
+        }
+
+        // ==================== GROSS & NET WEIGHT DETECTION ====================
+        const bruteMatch = cleanedText.match(/(peso bruto|bruto|gross)[\s\.:-]*([\d,\.]+)\s*(kg|g)?/i);
+        if (bruteMatch) {
+            let val = parseFloat(bruteMatch[2].replace(',', '.'));
+            const unit = (bruteMatch[3] || '').toLowerCase();
+            if (unit === 'g' || (!unit && val > 100)) val = val / 1000;
+            if (val > 0 && val < 500) result.gross_weight_kg = parseFloat(val.toFixed(3));
+        }
+
+        const netMatch = cleanedText.match(/(peso liquido|liquido|net|peso net)[\s\.:-]*([\d,\.]+)\s*(kg|g)?/i);
+        if (netMatch) {
+            let val = parseFloat(netMatch[2].replace(',', '.'));
+            const unit = (netMatch[3] || '').toLowerCase();
+            if (unit === 'g' || (!unit && val > 100)) val = val / 1000;
+            if (val > 0 && val < 500) result.net_weight_kg = parseFloat(val.toFixed(3));
         }
 
         // ==================== SUPPLIER DETECTION ====================
         // Priority 1: Explicit keywords
         const supplierKeywordLine = lines.find(l => /\b(marca|fornecedor|supplier|brand|fabricante|made by|de|s\.a\.|s\.a|ltda|cia|inc)\b/i.test(l));
         if (supplierKeywordLine) {
-            result.supplier = supplierKeywordLine.trim();
+            const cleaned = supplierKeywordLine.replace(/[^\w\s]/g, '').trim();
+            if (cleaned.length > 2) result.supplier = cleaned;
         } else if (lines.length > 0) {
-            // Priority 2: First non-empty, non-numeric line (often is supplier/brand)
+            // Priority 2: First good candidate line (not numeric, not label keyword)
+            const labelKeywords = /\b(lote|val|venc|validade|fab|prod|peso|kg|g|tara|codigo|cod|ingredientes|emb|packaging|data|date|liquido|bruto)\b/i;
             for (const l of lines) {
-                if (!/^\d+/.test(l) && l.length > 2 && l.length < 50) {
+                if (!/^\d+/.test(l) && !labelKeywords.test(l) && l.length > 3 && l.length < 60) {
                     result.supplier = l.trim();
                     break;
                 }
@@ -331,22 +378,25 @@ export const WeighingForm: React.FC = () => {
         }
 
         // ==================== PRODUCT DETECTION ====================
-        const labelKeywords = /\b(lote|val|venc|validade|fab|prod|peso|kg|g|tara|codigo|cod|ingredientes|ingrediente|emb|packaging|data|date)\b/i;
+        const labelKeywords = /\b(lote|val|venc|validade|fab|prod|peso|kg|g|tara|codigo|cod|ingredientes|ingrediente|emb|packaging|data|date|liquido|bruto|ml|l|g|peito)\b/i;
         let bestProduct = 'review';
         let bestScore = -999;
 
         for (const l of lines) {
-            // Skip lines with label keywords
+            // Skip lines with label keywords or that are too similar to supplier
             if (labelKeywords.test(l)) continue;
+            if (result.supplier !== 'review' && l.trim().toLowerCase() === result.supplier.toLowerCase()) continue;
             // Skip very short lines
             if (l.length < 3) continue;
-            // Skip lines with only numbers
-            if (/^\d+$/.test(l)) continue;
+            // Skip lines with only numbers or mostly numbers
+            if (/^\d+$/.test(l) || /^\d[\d\s]+\d$/.test(l)) continue;
+            // Skip single letters
+            if (/^[a-z]$/i.test(l)) continue;
 
             // Score: word count + length, penalize digits
             const words = l.split(/\s+/).length;
             const digitCount = (l.match(/\d/g) || []).length;
-            const score = words * 3 + Math.min(20, l.length / 2) - digitCount * 1.5;
+            const score = words * 3.5 + Math.min(25, l.length / 2.5) - digitCount * 1.2;
 
             if (score > bestScore) {
                 bestProduct = l.trim();
@@ -366,11 +416,16 @@ export const WeighingForm: React.FC = () => {
         if (result.manufacturing_date !== 'review') confidence += 15;
         if (result.expiration_date !== 'review') confidence += 15;
         if (result.tare_kg !== null) confidence += 10;
+        if (result.gross_weight_kg !== null) confidence += 5;
+        if (result.net_weight_kg !== null) confidence += 5;
+
+        // Boost confidence if multiple weights detected (likely reliable)
+        const weightsDetected = [result.tare_kg, result.gross_weight_kg, result.net_weight_kg].filter(w => w !== null).length;
+        if (weightsDetected >= 2) confidence += 10;
 
         result.confidence = Math.min(100, confidence);
 
         return result;
-    };
 
     const parseOCRText = (text: string) => {
         const ocrData = ocrInterpret(text);
