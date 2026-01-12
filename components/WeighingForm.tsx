@@ -156,6 +156,13 @@ export const WeighingForm: React.FC = () => {
 
     }, [supplier, product, language]);
 
+    // Update AI Alert when temperature suggestion is set
+    useEffect(() => {
+        if (temperatureSuggestion && aiAlert && !aiAlert.includes('Temperatura recomendada')) {
+            setAiAlert(prev => prev + ` 🌡️ Temperatura recomendada: ${temperatureSuggestion}°C`);
+        }
+    }, [temperatureSuggestion]);
+
     const boxTaraKg = Number(boxTara) / 1000;
     const boxTaraEmbalajeKg = Number(boxTaraEmbalaje) / 1000;
     const totalTara = (Number(boxQty) * boxTaraKg) + (Number(boxQtyEmbalaje) * boxTaraEmbalajeKg);
@@ -527,36 +534,43 @@ export const WeighingForm: React.FC = () => {
             foundData = true;
         }
 
-        // ==================== AUTO-SUGGEST TEMPERATURE (if product found) ====================
+        // ==================== AUTO-SUGGEST TEMPERATURE (using OCR image data) ====================
         if ((ocrData.product !== 'review' || product) && !temperature) {
             const productName = ocrData.product !== 'review' ? ocrData.product : product;
             const supplierName = ocrData.supplier !== 'review' ? ocrData.supplier : supplier;
             const expDate = foundExpiration || expirationDate;
             
-            // Trigger automatic temperature suggestion asynchronously
+            // Trigger automatic temperature suggestion asynchronously using PHOTO information
             (async () => {
                 try {
                     const month = new Date().getMonth() + 1;
                     const season = month >= 3 && month <= 8 ? 'verano (cálido)' : 'invierno (frío)';
                     
+                    // Improve prompt to use visual information from photo
                     const prompt = `Eres experto en almacenamiento y logística de productos alimentarios.
-            
-Producto: ${productName}
+
+INFORMACIÓN DE LA FOTO Y ETIQUETA:
+Producto identificado: ${productName}
 Proveedor: ${supplierName || 'N/A'}
 Temporada actual: ${season}
 Fecha de vencimiento: ${expDate || 'N/A'}
+Información visual: ${text.substring(0, 200)} (primeras líneas de la foto)
 
-Sugiere UNA temperatura óptima (en °C) para almacenar este producto, considerando:
-- Tipo de producto
-- Temporada/clima
-- Regulaciones internacionales
+Basándote en:
+- El tipo de producto
+- La información visual en la etiqueta/embalaje
+- La temporada/clima actual
+- Regulaciones internacionales de almacenamiento
+- Requisitos específicos del producto
 
-RESPONDE SOLO UN NÚMERO (ej: 18 o 12), sin explicación.`;
+Sugiere UNA temperatura óptima (en °C) para almacenar este producto.
+
+RESPONDE SOLO UN NÚMERO ENTRE 2 Y 25 (ej: 18 o 12), sin explicación, sin símbolo °.`;
 
                     const result = await callGeminiAPI(prompt);
                     const temp = parseInt(result?.trim() || '0');
                     
-                    if (temp > 0 && temp < 50) {
+                    if (temp > 1 && temp < 26) {
                         setTemperatureSuggestion(temp);
                         setTemperature(temp.toString());
                     }
@@ -570,7 +584,16 @@ RESPONDE SOLO UN NÚMERO (ej: 18 o 12), sin explicación.`;
         if (foundData) {
             const riskMsg = checkExpirationRisk(foundExpiration);
             const confidenceMsg = ocrData.confidence >= 75 ? "✅ Muy confiable" : ocrData.confidence >= 50 ? "⚠️ Revisar" : "❓ Baja confianza";
-            setAiAlert(`${confidenceMsg} (OCR: ${ocrData.confidence}%). ${riskMsg ? riskMsg + ". " : ""}Datos offline detectados.`);
+            
+            // Build AI message with temperature info
+            let aiMessage = `${confidenceMsg} (OCR: ${ocrData.confidence}%). ${riskMsg ? riskMsg + ". " : ""}Datos offline detectados.`;
+            
+            // Add temperature suggestion info if available (will be set shortly by async call)
+            if (temperatureSuggestion) {
+                aiMessage += ` 🌡️ Temperatura recomendada: ${temperatureSuggestion}°C`;
+            }
+            
+            setAiAlert(aiMessage);
         } else {
             setAiAlert("⚠️ No se detectaron datos claros. Copie manualmente.");
         }
@@ -936,15 +959,33 @@ RESPONDE SOLO UN NÚMERO (ej: 18 o 12), sin explicación.`;
                         </div>
                     </div>
                 ) : (
-                    <div className="p-1.5">
-                         <div className="relative rounded-xl overflow-hidden h-28 group">
+                    <div className="p-3 flex items-stretch gap-3">
+                         {/* Temperatura - Izquierda */}
+                         <div className="flex flex-col justify-center min-w-fit">
+                            <div className="flex items-center justify-center gap-1.5 bg-slate-50 dark:bg-black/30 border border-slate-200 dark:border-slate-700/50 rounded-2xl px-3 py-3">
+                                <div className="flex flex-col items-center gap-1">
+                                    <span className="material-icons-round text-slate-400 dark:text-slate-500 text-base pointer-events-none">thermostat</span>
+                                    {temperatureSuggestion ? (
+                                        <div className="text-center">
+                                            <div className="font-black text-xl text-primary-600 dark:text-primary-400">{temperatureSuggestion}°</div>
+                                            <div className="text-[8px] text-primary-600 dark:text-primary-400 font-bold">IA</div>
+                                        </div>
+                                    ) : (
+                                        <div className="text-slate-400 dark:text-slate-500 text-xs font-bold">-</div>
+                                    )}
+                                </div>
+                            </div>
+                         </div>
+
+                         {/* Foto - Derecha, cuadrado */}
+                         <div className="relative rounded-2xl overflow-hidden w-28 h-28 flex-shrink-0 group">
                              <img src={evidence} alt="Evidence" className="w-full h-full object-cover" />
-                             <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent flex items-end justify-between p-3">
-                                <div className="flex items-center gap-1.5 text-white">
+                             <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent flex items-end justify-between p-2">
+                                <div className="flex items-center gap-1 text-white">
                                     <div className="bg-green-500 rounded-full p-0.5">
                                         <span className="material-icons-round text-white text-[10px] pointer-events-none block">check</span>
                                     </div>
-                                    <span className="text-[10px] font-bold shadow-black drop-shadow-md">{t('lbl_photo_attached')}</span>
+                                    <span className="text-[9px] font-bold shadow-black drop-shadow-md">{t('lbl_photo_attached')}</span>
                                 </div>
                                 <button 
                                     onClick={(e) => { e.stopPropagation(); setEvidence(null); setAiAlert(null); setBatch(''); setExpirationDate(''); setProductionDate(''); }}

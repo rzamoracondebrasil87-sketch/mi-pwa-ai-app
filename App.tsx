@@ -649,14 +649,23 @@ ${record.evidence ? '📸 [FOTO]' : ''}`;
                                                         </div>
                                                     </div>
                                                     
-                                                    {/* Buttons Container */}
-                                                    <div className="flex items-center gap-2">
+                                                    {/* Temperature & Difference */}
+                                                    <div className="flex flex-col items-end gap-1">
+                                                        {record.temperature && (
+                                                            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 dark:bg-blue-500/20 rounded-xl">
+                                                                <span className="material-icons-round text-blue-600 dark:text-blue-400 text-sm pointer-events-none">thermostat</span>
+                                                                <span className="font-bold text-sm text-blue-600 dark:text-blue-400">{record.temperature}°</span>
+                                                            </div>
+                                                        )}
                                                         <div className={`px-4 py-2 rounded-2xl flex items-center justify-center ${diffColor}`}>
                                                             <span className="font-mono font-bold text-base leading-none">
                                                                 {diff > 0 ? '+' : ''}{diff.toFixed(2)}
                                                             </span>
                                                         </div>
-
+                                                    </div>
+                                                    
+                                                    {/* Buttons Container */}
+                                                    <div className="flex items-center gap-2">
                                                         {record.evidence && (
                                                             <button 
                                                                 onClick={(e) => { e.stopPropagation(); setViewingEvidence(record.evidence!); }}
