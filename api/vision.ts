@@ -47,6 +47,9 @@ async function getAccessToken(credentials: any): Promise<string> {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // Set response headers to always return JSON
+  res.setHeader('Content-Type', 'application/json');
+  
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
@@ -100,7 +103,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         logger.error('Vision API error response:', errorText);
       return res.status(visionResponse.status).json({
         error: 'Vision API error',
-        message: errorText,
+        message: errorText.substring(0, 200), // Limit error message length
       });
     }
 
@@ -122,10 +125,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     
   } catch (error: any) {
     logger.error('Vision API endpoint error:', error?.message || error);
-    return res.status(500).json({ 
+    
+    // Ensure always return valid JSON
+    const errorResponse = {
       error: 'Vision API error',
-      message: error?.message || 'Unknown error',
-      stack: process.env.NODE_ENV === 'development' ? error?.stack : undefined,
-    });
+      message: error?.message || 'Unknown error occurred',
+      timestamp: new Date().toISOString(),
+    };
+    
+    // Add stack trace only in development
+    if (process.env.NODE_ENV === 'development') {
+      (errorResponse as any).stack = error?.stack;
+    }
+    
+    return res.status(500).json(errorResponse);
   }
 }
