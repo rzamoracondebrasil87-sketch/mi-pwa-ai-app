@@ -426,6 +426,7 @@ export const WeighingForm: React.FC = () => {
         result.confidence = Math.min(100, confidence);
 
         return result;
+    };
 
     const parseOCRText = (text: string) => {
         const ocrData = ocrInterpret(text);
