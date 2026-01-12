@@ -16,26 +16,26 @@ export default defineConfig(({ mode }) => {
           registerType: 'autoUpdate',
           includeAssets: ['favicon.ico', 'apple-touch-icon.png'],
           manifest: {
-            name: 'Mi PWA AI App',
-            short_name: 'PWA AI',
-            description: 'PWA con inteligencia artificial usando Gemini',
-            theme_color: '#ffffff',
-            background_color: '#ffffff',
+            name: 'Conferente Pro',
+            short_name: 'Conferente',
+            description: 'Control de pesaje inteligente y conferencias',
+            theme_color: '#2563eb',
+            background_color: '#eff6ff',
             display: 'standalone',
             scope: '/',
             start_url: '/',
             icons: [
               {
-                src: '/pwa-192x192.png',
+                src: 'https://www.pwabuilder.com/assets/icons/icon_192.png',
                 sizes: '192x192',
                 type: 'image/png',
                 purpose: 'any'
               },
               {
-                src: '/pwa-512x512.png',
+                src: 'https://www.pwabuilder.com/assets/icons/icon_512.png',
                 sizes: '512x512',
                 type: 'image/png',
-                purpose: 'any maskable'
+                purpose: 'maskable'
               }
             ]
           },
