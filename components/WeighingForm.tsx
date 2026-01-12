@@ -219,160 +219,212 @@ export const WeighingForm: React.FC = () => {
         }
     };
 
-    const parseOCRText = (text: string) => {
+    // OCR Interpretation Module (Tesseract offline)
+    const ocrInterpret = (text: string): Record<string, any> => {
         const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
         const cleanText = text.toLowerCase();
+
+        const result = {
+            product: 'review',
+            supplier: 'review',
+            batch: 'review',
+            manufacturing_date: 'review',
+            expiration_date: 'review',
+            tare_kg: null,
+            gross_weight_kg: null,
+            net_weight_kg: null,
+            confidence: 0,
+        };
+
+        // ==================== DATE DETECTION ====================
+        const dateRegex = /(\d{2})[\/\-.](\d{2})[\/\-.](\d{2,4})/g;
+        const dateMatches = [...cleanText.matchAll(dateRegex)].map(m => ({
+            raw: m[0],
+            day: m[1],
+            month: m[2],
+            year: m[3].length === 2 ? '20' + m[3] : m[3],
+            index: m.index || 0,
+        }));
+
+        const normalizeDate = (dateObj: any) => `${dateObj.day}/${dateObj.month}/${dateObj.year}`;
+
+        // Production date: look for FAB/PROD keywords first
+        const prodKeywordMatch = cleanText.match(/(fab|fabr|man|prod|fabricacao|data de fab)[\s\.:-]*([\d\/\-\.]{6,10})/);
+        if (prodKeywordMatch && dateMatches.length > 0) {
+            const prodMatch = dateMatches.find(d => prodKeywordMatch[2].includes(d.raw));
+            if (prodMatch) result.manufacturing_date = normalizeDate(prodMatch);
+            else if (dateMatches.length > 0) result.manufacturing_date = normalizeDate(dateMatches[0]);
+        } else if (dateMatches.length > 0) {
+            result.manufacturing_date = normalizeDate(dateMatches[0]);
+        }
+
+        // Expiration date: look for VAL/VENC/EXP keywords first
+        const expKeywordMatch = cleanText.match(/(val|venc|exp|validade|vencimento)[\s\.:-]*([\d\/\-\.]{6,10})/);
+        if (expKeywordMatch && dateMatches.length > 0) {
+            const expMatch = dateMatches.find(d => expKeywordMatch[2].includes(d.raw));
+            if (expMatch) result.expiration_date = normalizeDate(expMatch);
+            else if (dateMatches.length > 1) result.expiration_date = normalizeDate(dateMatches[dateMatches.length - 1]);
+        } else if (dateMatches.length > 1) {
+            result.expiration_date = normalizeDate(dateMatches[dateMatches.length - 1]);
+        }
+
+        // ==================== BATCH / LOT DETECTION ====================
+        // Priority 1: Explicit LOT/LOTE/BATCH keywords
+        const batchKeywordLine = lines.find(l => /\b(lote|lot|l:|l\.|batch|lote:)\b/i.test(l));
+        if (batchKeywordLine) {
+            const batchMatch = batchKeywordLine.match(/(lote|lot|l:|l\.|batch|lote:)[\s\.:]?([A-Za-z0-9\-\/]+)/i);
+            if (batchMatch && batchMatch[2]) {
+                result.batch = batchMatch[2].trim().toUpperCase();
+            }
+        } else {
+            // Priority 2: Find alphanumeric tokens near dates or weights
+            for (const l of lines) {
+                const token = l.replace(/[^A-Za-z0-9\-\/]/g, '').trim();
+                if (/^[A-Z0-9\-]{3,15}$/.test(token) && !/^\d+$/.test(token)) {
+                    result.batch = token.toUpperCase();
+                    break;
+                }
+            }
+        }
+
+        // ==================== TARE DETECTION ====================
+        const taraKeywordLine = lines.find(l => /\b(tara|t:|t\.|emb|packaging|peso vazio)\b/i.test(l));
+        if (taraKeywordLine) {
+            const taraMatch = taraKeywordLine.match(/(\d+[\.,]?\d*)\s*(g|kg|ml)?/i);
+            if (taraMatch) {
+                let taraVal = parseFloat(taraMatch[1].replace(',', '.'));
+                const unit = (taraMatch[2] || '').toLowerCase();
+                // Normalize to kg
+                if (unit === 'g' || (!unit && taraVal > 100)) taraVal = taraVal / 1000;
+                if (!isNaN(taraVal) && taraVal > 0 && taraVal < 100) {
+                    result.tare_kg = parseFloat(taraVal.toFixed(3));
+                }
+            }
+        } else {
+            // Fallback: find smallest reasonable weight
+            const weightRegex = /(\d+[\.,]?\d*)\s*(g|kg|ml)\b/gi;
+            const weights: number[] = [];
+            for (const match of cleanText.matchAll(weightRegex)) {
+                let val = parseFloat(match[1].replace(',', '.'));
+                const unit = (match[2] || '').toLowerCase();
+                if (unit === 'g' || (!unit && val > 100)) val = val / 1000;
+                if (val > 0 && val < 100) weights.push(val);
+            }
+            if (weights.length > 0) {
+                result.tare_kg = parseFloat(Math.min(...weights).toFixed(3));
+            }
+        }
+
+        // ==================== SUPPLIER DETECTION ====================
+        // Priority 1: Explicit keywords
+        const supplierKeywordLine = lines.find(l => /\b(marca|fornecedor|supplier|brand|fabricante|made by|de|s\.a\.|s\.a|ltda|cia|inc)\b/i.test(l));
+        if (supplierKeywordLine) {
+            result.supplier = supplierKeywordLine.trim();
+        } else if (lines.length > 0) {
+            // Priority 2: First non-empty, non-numeric line (often is supplier/brand)
+            for (const l of lines) {
+                if (!/^\d+/.test(l) && l.length > 2 && l.length < 50) {
+                    result.supplier = l.trim();
+                    break;
+                }
+            }
+        }
+
+        // ==================== PRODUCT DETECTION ====================
+        const labelKeywords = /\b(lote|val|venc|validade|fab|prod|peso|kg|g|tara|codigo|cod|ingredientes|ingrediente|emb|packaging|data|date)\b/i;
+        let bestProduct = 'review';
+        let bestScore = -999;
+
+        for (const l of lines) {
+            // Skip lines with label keywords
+            if (labelKeywords.test(l)) continue;
+            // Skip very short lines
+            if (l.length < 3) continue;
+            // Skip lines with only numbers
+            if (/^\d+$/.test(l)) continue;
+
+            // Score: word count + length, penalize digits
+            const words = l.split(/\s+/).length;
+            const digitCount = (l.match(/\d/g) || []).length;
+            const score = words * 3 + Math.min(20, l.length / 2) - digitCount * 1.5;
+
+            if (score > bestScore) {
+                bestProduct = l.trim();
+                bestScore = score;
+            }
+        }
+
+        if (bestProduct !== 'review') {
+            result.product = bestProduct;
+        }
+
+        // ==================== CONFIDENCE SCORING ====================
+        let confidence = 0;
+        if (result.product !== 'review') confidence += 25;
+        if (result.supplier !== 'review') confidence += 20;
+        if (result.batch !== 'review') confidence += 15;
+        if (result.manufacturing_date !== 'review') confidence += 15;
+        if (result.expiration_date !== 'review') confidence += 15;
+        if (result.tare_kg !== null) confidence += 10;
+
+        result.confidence = Math.min(100, confidence);
+
+        return result;
+    };
+
+    const parseOCRText = (text: string) => {
+        const ocrData = ocrInterpret(text);
         let foundData = false;
         let foundExpiration = '';
 
-        // Helper: normalize date to DD/MM/YYYY when possible
-        const normalizeDate = (d: string) => {
-            const m = d.match(/(\d{2})[\/.](\d{2})[\/.](\d{2,4})/);
-            if (!m) return null;
-            let day = m[1];
-            let month = m[2];
-            let year = m[3];
-            if (year.length === 2) year = '20' + year;
-            return `${day}/${month}/${year}`;
-        };
+        console.log("OCR Interpretation Result:", ocrData);
 
-        // Dates: collect all date-like tokens (more permissive)
-        const dateRegex = /(\d{2})[\/.](\d{2})[\/.](\d{2,4})/g;
-        const dates = [...cleanText.matchAll(dateRegex)].map(m => m[0]);
+        // ==================== APPLY EXTRACTED DATA ====================
 
-        // 1) Extract expiration explicitly by label
-        if (!expirationDate) {
-            const expMatch = cleanText.match(/(val|venc|validade|v\:|val\:)[\s\.:]*([\d\/.]{6,10})/);
-            if (expMatch) {
-                const nd = normalizeDate(expMatch[2]);
-                if (nd) {
-                    foundExpiration = nd;
-                    setExpirationDate(nd);
-                    foundData = true;
-                }
-            } else if (dates.length > 1) {
-                const nd = normalizeDate(dates[1]);
-                if (nd) {
-                    foundExpiration = nd;
-                    setExpirationDate(nd);
-                    foundData = true;
-                }
-            }
+        // Product
+        if (ocrData.product !== 'review' && !product) {
+            setProduct(ocrData.product);
+            foundData = true;
         }
 
-        // 2) Production date
-        if (!productionDate) {
-            const prodMatch = cleanText.match(/(fab|prod|data de fab|fabricacao|f\:|fab\:|prod\:)[\s\.:]*([\d\/.]{6,10})/);
-            if (prodMatch) {
-                const nd = normalizeDate(prodMatch[2]);
-                if (nd) {
-                    setProductionDate(nd);
-                    foundData = true;
-                }
-            } else if (dates.length > 0) {
-                const nd = normalizeDate(dates[0]);
-                if (nd) {
-                    setProductionDate(nd);
-                    foundData = true;
-                }
-            }
+        // Supplier
+        if (ocrData.supplier !== 'review' && !supplier) {
+            setSupplier(ocrData.supplier);
+            foundData = true;
         }
 
-        // 3) Batch (Lote)
-        if (!batch) {
-            // Check line-by-line for 'lote' or 'l:' first
-            const batchLine = lines.find(l => /\b(lote|l\:|l\.|batch)\b/i.test(l));
-            if (batchLine) {
-                const m = batchLine.match(/(lote|l\:|l\.|batch)[\s\.:]*([A-Za-z0-9\-\/]+)/i);
-                if (m && m[2]) {
-                    setBatch(m[2].toUpperCase());
-                    foundData = true;
-                }
-            } else {
-                // fallback: look for uppercase alphanumeric tokens of reasonable length
-                for (const l of lines) {
-                    const token = l.replace(/[^A-Za-z0-9\-]/g, '');
-                    if (/^[A-Z0-9\-]{4,12}$/.test(token)) {
-                        setBatch(token.toUpperCase());
-                        foundData = true;
-                        break;
-                    }
-                }
-            }
+        // Batch
+        if (ocrData.batch !== 'review' && !batch) {
+            setBatch(ocrData.batch);
+            foundData = true;
         }
 
-        // 4) Tara (packaging weight)
-        if (!boxTara) {
-            // Prefer explicit 'tara' mentions
-            const taraLine = lines.find(l => /\btara\b/i.test(l));
-            if (taraLine) {
-                const m = taraLine.match(/(\d+[\.,]?\d*)\s*(g|kg)?/i);
-                if (m) {
-                    let val = parseFloat(m[1].replace(',', '.'));
-                    const unit = (m[2] || '').toLowerCase();
-                    if (unit === 'kg' || val < 10) val = unit === 'kg' ? val * 1000 : val * 1000;
-                    setBoxTara(Math.round(val).toString());
-                    setShowBoxes(true);
-                    foundData = true;
-                }
-            } else {
-                // Fallback: find small numbers with g or kg anywhere
-                for (const l of lines) {
-                    const m = l.match(/(\d+[\.,]?\d*)\s*(g|kg)\b/i);
-                    if (m) {
-                        let val = parseFloat(m[1].replace(',', '.'));
-                        const unit = m[2].toLowerCase();
-                        if (unit === 'kg') val = val * 1000;
-                        // Heuristic: ignore numbers that are too large (>20000g)
-                        if (!isNaN(val) && val > 0 && val < 20000) {
-                            setBoxTara(Math.round(val).toString());
-                            setShowBoxes(true);
-                            foundData = true;
-                            break;
-                        }
-                    }
-                }
-            }
+        // Manufacturing Date
+        if (ocrData.manufacturing_date !== 'review' && !productionDate) {
+            setProductionDate(ocrData.manufacturing_date);
+            foundData = true;
         }
 
-        // 5) Product extraction: choose the best candidate line (prefer long text, no digits, not labels)
-        if (!product) {
-            const labelKeywords = /\b(lote|val|venc|validade|fab|prod|peso|kg|g|tara|codigo|cod|ingredientes|ingrediente)\b/i;
-            let best: string | null = null;
-            let bestScore = 0;
-            for (const l of lines) {
-                const clean = l.replace(/[^\p{L}\s]/gu, '').trim();
-                if (!clean) continue;
-                if (labelKeywords.test(clean)) continue;
-                const words = clean.split(/\s+/);
-                const digitCount = (clean.match(/\d/g) || []).length;
-                // Score: more words and longer length, penalize digits
-                const score = words.length * 2 + Math.min(10, clean.length / 5) - digitCount * 2;
-                if (score > bestScore) {
-                    best = clean;
-                    bestScore = score;
-                }
-            }
-            if (best) {
-                // Keep original casing by finding the original line
-                const orig = lines.find(l => l.toLowerCase().includes(best!.toLowerCase()));
-                setProduct((orig || best).trim());
-                foundData = true;
-            }
+        // Expiration Date
+        if (ocrData.expiration_date !== 'review' && !expirationDate) {
+            foundExpiration = ocrData.expiration_date;
+            setExpirationDate(ocrData.expiration_date);
+            foundData = true;
         }
 
-        // 6) Supplier extraction: simple heuristic - small words after product or lines with brand-like tokens
-        if (!supplier) {
-            const supplierLine = lines.find(l => /\b(brand|marca|fornecedor|supplier|s\.|marca\:|fornecedor\:|marca:)\b/i.test(l));
-            if (supplierLine) {
-                setSupplier(supplierLine.trim());
-                foundData = true;
-            }
+        // Tare Weight
+        if (ocrData.tare_kg !== null && !boxTara) {
+            const taraGrams = Math.round(ocrData.tare_kg * 1000);
+            setBoxTara(taraGrams.toString());
+            setShowBoxes(true);
+            foundData = true;
         }
 
+        // ==================== FEEDBACK MESSAGE ====================
         if (foundData) {
             const riskMsg = checkExpirationRisk(foundExpiration);
-            setAiAlert(riskMsg ? `${riskMsg}. Datos detectados.` : "✅ Datos detectados localmente (Offline). Puede revisar y ajustar.");
+            const confidenceMsg = ocrData.confidence >= 75 ? "✅ Muy confiable" : ocrData.confidence >= 50 ? "⚠️ Revisar" : "❓ Baja confianza";
+            setAiAlert(`${confidenceMsg} (OCR: ${ocrData.confidence}%). ${riskMsg ? riskMsg + ". " : ""}Datos offline detectados.`);
         } else {
             setAiAlert("⚠️ No se detectaron datos claros. Copie manualmente.");
         }
