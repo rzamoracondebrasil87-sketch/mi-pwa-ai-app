@@ -145,7 +145,16 @@ export const WeighingForm: React.FC = () => {
 
         updateAssistantVoice();
 
-    }, [supplier, product, grossWeight, noteWeight, boxQty, boxTara, language]);
+        // AUTO-PREDICT WEIGHT when supplier+product are set
+        if (supplier && product && !grossWeight) {
+            const timer = setTimeout(() => {
+                analyzeWithAI();
+            }, 2000); // 2 second delay to avoid too many API calls
+
+            return () => clearTimeout(timer);
+        }
+
+    }, [supplier, product, language]);
 
     const boxTaraKg = Number(boxTara) / 1000;
     const boxTaraEmbalajeKg = Number(boxTaraEmbalaje) / 1000;
@@ -798,21 +807,21 @@ RESPONDE SOLO UN NÚMERO (ej: 18 o 12), sin explicación.`;
     };
 
     return (
-        <div className="pb-32 pt-2 space-y-5">
+        <div className="pb-32 pt-2 space-y-4">
             
             {/* 🤖 Dynamic AI Assistant Bubble */}
-            <div className={`p-6 rounded-[2.5rem] shadow-xl transition-all duration-500 bg-gradient-to-br ${getStatusColor()} relative overflow-hidden group`}>
-                <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-10 -mt-10 blur-2xl"></div>
-                <div className="absolute bottom-0 left-0 w-24 h-24 bg-black/10 rounded-full -ml-8 -mb-8 blur-xl"></div>
+            <div className={`p-4 rounded-2xl shadow-lg transition-all duration-500 bg-gradient-to-br ${getStatusColor()} relative overflow-hidden group`}>
+                <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full -mr-10 -mt-10 blur-2xl"></div>
+                <div className="absolute bottom-0 left-0 w-20 h-20 bg-black/10 rounded-full -ml-8 -mb-8 blur-xl"></div>
 
                 <div className="relative z-10">
-                    <div className="flex items-start gap-4 mb-5">
-                         <div className="w-12 h-12 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center shrink-0 border border-white/30 shadow-inner">
-                            <span className="material-icons-round text-2xl pointer-events-none text-white">smart_toy</span>
+                    <div className="flex items-start gap-2 mb-3">
+                         <div className="w-10 h-10 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center shrink-0 border border-white/30 shadow-inner">
+                            <span className="material-icons-round text-lg pointer-events-none text-white">smart_toy</span>
                          </div>
                          <div className="flex-1">
-                             <div className="bg-white/10 backdrop-blur-sm rounded-2xl rounded-tl-none p-3 border border-white/10">
-                                 <p className="text-sm font-medium opacity-95 leading-snug text-white">
+                             <div className="bg-white/10 backdrop-blur-sm rounded-lg rounded-tl-none p-2.5 border border-white/10">
+                                 <p className="text-xs font-medium opacity-95 leading-snug text-white">
                                     {isReadingImage ? (
                                         <span className="animate-pulse">{t('lbl_analyzing_img')}</span>
                                     ) : (
@@ -821,24 +830,24 @@ RESPONDE SOLO UN NÚMERO (ej: 18 o 12), sin explicación.`;
                                  </p>
                              </div>
                              {historyContext && !aiAlert && !isReadingImage && (
-                                 <p className="text-[10px] mt-2 opacity-75 flex items-center gap-1 bg-black/20 px-3 py-1 rounded-full w-fit text-white backdrop-blur-sm">
-                                    <span className="material-icons-round text-[12px] pointer-events-none">history</span>
+                                 <p className="text-[9px] mt-1.5 opacity-75 flex items-center gap-1 bg-black/20 px-2.5 py-0.5 rounded-full w-fit text-white backdrop-blur-sm">
+                                    <span className="material-icons-round text-[10px] pointer-events-none">history</span>
                                     {historyContext}
                                  </p>
                              )}
                          </div>
                     </div>
 
-                    <div className="flex justify-between items-end border-t border-white/10 pt-4">
+                    <div className="flex justify-between items-end border-t border-white/10 pt-2.5">
                         <div className="text-white">
-                            <span className="text-[10px] uppercase tracking-widest opacity-70 font-bold mb-1 block">Líquido</span>
-                            <div className="text-4xl font-black tracking-tighter font-mono leading-none">
-                                {netWeight.toFixed(2)}<span className="text-lg opacity-60 ml-1 font-sans font-bold">kg</span>
+                            <span className="text-[9px] uppercase tracking-widest opacity-70 font-bold mb-0.5 block">Líquido</span>
+                            <div className="text-2xl font-black tracking-tighter font-mono leading-none">
+                                {netWeight.toFixed(2)}<span className="text-xs opacity-60 ml-0.5 font-sans font-bold">kg</span>
                             </div>
                         </div>
                         <div className="text-right text-white">
-                            <span className="text-[10px] uppercase tracking-widest opacity-70 font-bold mb-1 block">Diferencia</span>
-                            <div className={`text-2xl font-bold font-mono bg-white/10 px-3 py-1 rounded-xl backdrop-blur-sm inline-block ${Math.abs(difference) > TOLERANCE_KG ? 'animate-pulse' : ''}`}>
+                            <span className="text-[9px] uppercase tracking-widest opacity-70 font-bold mb-0.5 block">Diferencia</span>
+                            <div className={`text-lg font-bold font-mono bg-white/10 px-2 py-0.5 rounded-lg backdrop-blur-sm inline-block ${Math.abs(difference) > TOLERANCE_KG ? 'animate-pulse' : ''}`}>
                                 {difference > 0 ? '+' : ''}{difference.toFixed(2)}
                             </div>
                         </div>
@@ -848,9 +857,9 @@ RESPONDE SOLO UN NÚMERO (ej: 18 o 12), sin explicación.`;
                          <button 
                             onClick={analyzeWithAI} 
                             disabled={isAnalyzing} 
-                            className="mt-4 w-full py-3 bg-white hover:bg-slate-50 text-slate-800 rounded-2xl text-xs font-bold shadow-lg transition-all flex items-center justify-center gap-2"
+                            className="mt-2.5 w-full py-2 bg-white hover:bg-slate-50 text-slate-800 rounded-lg text-[10px] font-bold shadow-lg transition-all flex items-center justify-center gap-1.5"
                         >
-                             {isAnalyzing ? <span className="animate-spin material-icons-round text-sm pointer-events-none">refresh</span> : <span className="material-icons-round text-sm pointer-events-none">analytics</span>}
+                             {isAnalyzing ? <span className="animate-spin material-icons-round text-xs pointer-events-none">refresh</span> : <span className="material-icons-round text-xs pointer-events-none">analytics</span>}
                              {isAnalyzing ? t('btn_analyzing') : t('btn_consult_ai')}
                          </button>
                      )}
@@ -863,46 +872,46 @@ RESPONDE SOLO UN NÚMERO (ej: 18 o 12), sin explicación.`;
                 onClick={() => setActiveSection('evidence')}
             >
                 {!evidence ? (
-                    <div className="p-4 flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-3">
-                             <div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center">
-                                <span className="material-icons-round text-xl pointer-events-none">qr_code_scanner</span>
+                    <div className="p-3 flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                             <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center">
+                                <span className="material-icons-round text-lg pointer-events-none">qr_code_scanner</span>
                             </div>
-                            <span className="font-bold text-slate-700 dark:text-slate-200 text-sm leading-tight">{t('lbl_evidence_section')}</span>
+                            <span className="font-bold text-slate-700 dark:text-slate-200 text-xs leading-tight">{t('lbl_evidence_section')}</span>
                         </div>
 
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1.5">
                             <button 
                                 onClick={(e) => { e.stopPropagation(); cameraInputRef.current?.click(); }}
-                                className="bg-slate-800 dark:bg-white text-white dark:text-slate-900 px-4 py-3 rounded-full text-xs font-bold shadow-md hover:scale-105 active:scale-95 transition-all flex items-center gap-2"
+                                className="bg-slate-800 dark:bg-white text-white dark:text-slate-900 px-3 py-2 rounded-full text-[11px] font-bold shadow-md hover:scale-105 active:scale-95 transition-all flex items-center gap-1"
                             >
-                                <span className="material-icons-round text-sm pointer-events-none">photo_camera</span>
+                                <span className="material-icons-round text-xs pointer-events-none">photo_camera</span>
                                 {t('btn_camera')}
                             </button>
                             <button 
                                 onClick={(e) => { e.stopPropagation(); galleryInputRef.current?.click(); }}
-                                className="bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-200 w-10 h-10 rounded-full flex items-center justify-center border border-slate-200 dark:border-transparent hover:bg-slate-200 dark:hover:bg-slate-600 active:scale-95 transition-all"
+                                className="bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-200 w-9 h-9 rounded-full flex items-center justify-center border border-slate-200 dark:border-transparent hover:bg-slate-200 dark:hover:bg-slate-600 active:scale-95 transition-all"
                             >
-                                <span className="material-icons-round text-lg pointer-events-none">image</span>
+                                <span className="material-icons-round text-base pointer-events-none">image</span>
                             </button>
                         </div>
                     </div>
                 ) : (
-                    <div className="p-2">
-                         <div className="relative rounded-[1.5rem] overflow-hidden h-32 group">
+                    <div className="p-1.5">
+                         <div className="relative rounded-xl overflow-hidden h-28 group">
                              <img src={evidence} alt="Evidence" className="w-full h-full object-cover" />
-                             <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent flex items-end justify-between p-4">
-                                <div className="flex items-center gap-2 text-white">
-                                    <div className="bg-green-500 rounded-full p-1">
-                                        <span className="material-icons-round text-white text-xs pointer-events-none block">check</span>
+                             <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent flex items-end justify-between p-3">
+                                <div className="flex items-center gap-1.5 text-white">
+                                    <div className="bg-green-500 rounded-full p-0.5">
+                                        <span className="material-icons-round text-white text-[10px] pointer-events-none block">check</span>
                                     </div>
-                                    <span className="text-xs font-bold shadow-black drop-shadow-md">{t('lbl_photo_attached')}</span>
+                                    <span className="text-[10px] font-bold shadow-black drop-shadow-md">{t('lbl_photo_attached')}</span>
                                 </div>
                                 <button 
                                     onClick={(e) => { e.stopPropagation(); setEvidence(null); setAiAlert(null); setBatch(''); setExpirationDate(''); setProductionDate(''); }}
-                                    className="bg-white/20 hover:bg-white/40 text-white p-2 rounded-full backdrop-blur-md transition-colors border border-white/20"
+                                    className="bg-white/20 hover:bg-white/40 text-white p-1.5 rounded-full backdrop-blur-md transition-colors border border-white/20"
                                 >
-                                    <span className="material-icons-round text-lg pointer-events-none">delete</span>
+                                    <span className="material-icons-round text-base pointer-events-none">delete</span>
                                 </button>
                              </div>
                          </div>
@@ -932,13 +941,13 @@ RESPONDE SOLO UN NÚMERO (ej: 18 o 12), sin explicación.`;
                 className={`rounded-[2.5rem] border transition-all duration-300 overflow-hidden ${getSectionStyle('identity')}`}
                 onFocus={() => setActiveSection('identity')}
             >
-                <div className="p-6 space-y-5">
-                    <div className="flex items-center gap-3 mb-2 opacity-60 dark:opacity-80 text-slate-500 dark:text-slate-400">
-                        <span className="material-icons-round pointer-events-none">store</span>
+                <div className="p-4 space-y-3">
+                    <div className="flex items-center gap-3 mb-1 opacity-60 dark:opacity-80 text-slate-500 dark:text-slate-400">
+                        <span className="material-icons-round pointer-events-none text-lg">store</span>
                         <span className="text-xs font-bold uppercase tracking-wider">{t('lbl_identity')}</span>
                     </div>
 
-                    <div className="space-y-4">
+                    <div className="space-y-3">
                          <div className="relative">
                             <input 
                                 list="suppliers"
@@ -1041,29 +1050,29 @@ RESPONDE SOLO UN NÚMERO (ej: 18 o 12), sin explicación.`;
                 className={`rounded-[2.5rem] border transition-all duration-300 overflow-hidden ${getSectionStyle('weights')}`}
                 onFocus={() => setActiveSection('weights')}
             >
-                <div className="p-6">
-                     <div className="flex items-center gap-3 mb-5 opacity-60 dark:opacity-80 text-slate-500 dark:text-slate-400">
-                        <span className="material-icons-round pointer-events-none">scale</span>
+                <div className="p-4">
+                     <div className="flex items-center gap-3 mb-3 opacity-60 dark:opacity-80 text-slate-500 dark:text-slate-400">
+                        <span className="material-icons-round pointer-events-none text-lg">scale</span>
                         <span className="text-xs font-bold uppercase tracking-wider">{t('lbl_weighing')}</span>
                     </div>
                     
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="bg-slate-100 dark:bg-black/20 rounded-3xl p-5 border border-slate-200 dark:border-transparent focus-within:ring-4 focus-within:ring-primary-100 dark:focus-within:ring-primary-900/20 transition-all">
-                            <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-2">{t('lbl_note_weight')}</label>
+                    <div className="grid grid-cols-2 gap-3">
+                        <div className="bg-slate-100 dark:bg-black/20 rounded-2xl p-3 border border-slate-200 dark:border-transparent focus-within:ring-4 focus-within:ring-primary-100 dark:focus-within:ring-primary-900/20 transition-all">
+                            <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">{t('lbl_note_weight')}</label>
                             <div className="flex items-baseline gap-1">
                                 <input 
                                     ref={noteInputRef}
                                     type="number" 
                                     value={noteWeight}
                                     onChange={e => setNoteWeight(e.target.value)}
-                                    className="w-full bg-transparent text-3xl font-black text-slate-800 dark:text-white outline-none placeholder:text-slate-300 dark:placeholder:text-slate-700 font-mono tracking-tight"
+                                    className="w-full bg-transparent text-2xl font-black text-slate-800 dark:text-white outline-none placeholder:text-slate-300 dark:placeholder:text-slate-700 font-mono tracking-tight"
                                     placeholder="0"
                                 />
-                                <span className="text-sm text-slate-400 dark:text-slate-600 font-bold">kg</span>
+                                <span className="text-xs text-slate-400 dark:text-slate-600 font-bold">kg</span>
                             </div>
                         </div>
-                        <div className="bg-slate-100 dark:bg-black/20 rounded-3xl p-5 border border-slate-200 dark:border-transparent focus-within:ring-4 focus-within:ring-primary-100 dark:focus-within:ring-primary-900/20 transition-all">
-                            <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-2">{t('lbl_gross_weight')}</label>
+                        <div className="bg-slate-100 dark:bg-black/20 rounded-2xl p-3 border border-slate-200 dark:border-transparent focus-within:ring-4 focus-within:ring-primary-100 dark:focus-within:ring-primary-900/20 transition-all">
+                            <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">{t('lbl_gross_weight')}</label>
                              <div className="flex items-baseline gap-1">
                                 <input 
                                     ref={grossInputRef}
@@ -1074,13 +1083,13 @@ RESPONDE SOLO UN NÚMERO (ej: 18 o 12), sin explicación.`;
                                         setActiveSection('weights');
                                         setShowBoxes(false); // Auto-collapse tara when moving to gross weight
                                     }}
-                                    className="w-full bg-transparent text-3xl font-black text-slate-800 dark:text-white outline-none placeholder:text-slate-300 dark:placeholder:text-slate-700 font-mono tracking-tight"
+                                    className="w-full bg-transparent text-2xl font-black text-slate-800 dark:text-white outline-none placeholder:text-slate-300 dark:placeholder:text-slate-700 font-mono tracking-tight"
                                     placeholder="0 o 50, 52, 49"
                                 />
-                                <span className="text-sm text-slate-400 dark:text-slate-600 font-bold">kg</span>
+                                <span className="text-xs text-slate-400 dark:text-slate-600 font-bold">kg</span>
                             </div>
                             {grossWeight.includes(',') && (
-                                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                                <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
                                     Total: {parseGrossWeightInput(grossWeight).total} kg
                                 </p>
                             )}
@@ -1096,46 +1105,43 @@ RESPONDE SOLO UN NÚMERO (ej: 18 o 12), sin explicación.`;
             >
                  <button 
                     onClick={() => setShowBoxes(!showBoxes)}
-                    className="w-full flex items-center justify-between p-6"
+                    className="w-full flex items-center justify-between p-4"
                     type="button"
                 >
-                    <div className="flex items-center gap-4">
-                         <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${prediction.suggestedTaraBox ? 'bg-primary-100 dark:bg-primary-500/20 text-primary-600 dark:text-primary-300' : 'bg-slate-100 dark:bg-slate-700 text-slate-400 dark:text-slate-400'}`}>
-                            <span className="material-icons-round text-xl pointer-events-none">inventory_2</span>
+                    <div className="flex items-center gap-3">
+                         <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${prediction.suggestedTaraBox ? 'bg-primary-100 dark:bg-primary-500/20 text-primary-600 dark:text-primary-300' : 'bg-slate-100 dark:bg-slate-700 text-slate-400 dark:text-slate-400'}`}>
+                            <span className="material-icons-round text-lg pointer-events-none">inventory_2</span>
                          </div>
                          <div className="text-left">
-                             <span className="font-bold text-slate-700 dark:text-white text-base block mb-0.5">{t('lbl_tara_section')}</span>
+                             <span className="font-bold text-slate-700 dark:text-white text-sm block mb-0">{t('lbl_tara_section')}</span>
                              {prediction.suggestedTaraBox && !showBoxes && (
-                                 <span className="text-[10px] bg-primary-100 dark:bg-primary-900/40 text-primary-700 dark:text-primary-300 px-2 py-0.5 rounded-full font-bold">{t('lbl_ai_pattern')}</span>
+                                 <span className="text-[9px] bg-primary-100 dark:bg-primary-900/40 text-primary-700 dark:text-primary-300 px-1.5 py-0.5 rounded-full font-bold">{t('lbl_ai_pattern')}</span>
                              )}
                          </div>
                     </div>
                     
-                    {!showBoxes && (Number(boxQty) > 0 || Number(boxTara) > 0) ? (
-                        <div className="flex items-center gap-2">
-                             {Number(boxQty) > 0 && (
-                                <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-700 px-3 py-1.5 rounded-full border border-slate-200 dark:border-transparent">
-                                    <span className="material-icons-round text-[10px] text-slate-500 dark:text-slate-400 pointer-events-none">layers</span>
-                                    <span className="text-xs font-bold text-slate-600 dark:text-slate-200">{boxQty}</span>
-                                </div>
-                             )}
-                             <span className="font-mono text-sm font-bold bg-slate-800 dark:bg-white text-white dark:text-slate-900 px-3 py-1.5 rounded-full shadow-md">
+                    {!showBoxes && (Number(boxQty) > 0 || Number(boxTara) > 0 || Number(boxQtyEmbalaje) > 0 || Number(boxTaraEmbalaje) > 0) ? (
+                        <div className="flex items-center gap-1">
+                             <span className="font-mono text-sm font-bold bg-slate-800 dark:bg-white text-white dark:text-slate-900 px-2.5 py-1 rounded-full shadow-md">
+                                {totalTara.toFixed(1)}kg
+                             </span>
+                             <span className="font-mono text-sm font-bold bg-slate-800 dark:bg-white text-white dark:text-slate-900 px-2.5 py-1 rounded-full shadow-md">
                                 {totalTara.toFixed(1)}kg
                              </span>
                         </div>
                     ) : (
-                         <div className={`w-10 h-10 rounded-full flex items-center justify-center bg-slate-100 dark:bg-slate-800 transition-transform ${showBoxes ? 'rotate-180 bg-slate-200 dark:bg-slate-700' : ''}`}>
-                            <span className="material-icons-round text-slate-400 dark:text-slate-400 pointer-events-none">expand_more</span>
+                         <div className={`w-8 h-8 rounded-full flex items-center justify-center bg-slate-100 dark:bg-slate-800 transition-transform ${showBoxes ? 'rotate-180 bg-slate-200 dark:bg-slate-700' : ''}`}>
+                            <span className="material-icons-round text-sm text-slate-400 dark:text-slate-400 pointer-events-none">expand_more</span>
                          </div>
                     )}
                 </button>
 
                 {showBoxes && (
-                    <div className="px-6 pb-6 animate-fade-in space-y-4">
+                    <div className="px-4 pb-4 animate-fade-in space-y-3">
                         {prediction.suggestedTaraBox !== undefined && (
                             <button
                                 onClick={() => setBoxTara((prediction.suggestedTaraBox! * 1000).toString())}
-                                className="w-full py-4 bg-primary-50 dark:bg-primary-500/10 text-primary-700 dark:text-primary-300 rounded-3xl text-sm font-bold border border-primary-100 dark:border-primary-500/20 flex items-center justify-center gap-2 hover:scale-[1.02] transition-transform"
+                                className="w-full py-2.5 bg-primary-50 dark:bg-primary-500/10 text-primary-700 dark:text-primary-300 rounded-2xl text-xs font-bold border border-primary-100 dark:border-primary-500/20 flex items-center justify-center gap-2 hover:scale-[1.02] transition-transform"
                                 type="button"
                             >
                                 <span className="material-icons-round text-lg pointer-events-none">auto_fix_normal</span>
@@ -1144,29 +1150,29 @@ RESPONDE SOLO UN NÚMERO (ej: 18 o 12), sin explicación.`;
                         )}
                         
                         {/* Cajas (Left Column) */}
-                        <div className="space-y-3 pb-4 border-b border-slate-200 dark:border-slate-700/50">
-                            <h4 className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wide flex items-center gap-2">
+                        <div className="space-y-2 pb-3 border-b border-slate-200 dark:border-slate-700/50">
+                            <h4 className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wide flex items-center gap-1">
                                 <span className="material-icons-round text-sm">inventory_2</span>
                                 Cajas
                             </h4>
-                            <div className="grid grid-cols-2 gap-3">
-                                <div className="bg-slate-50 dark:bg-black/20 rounded-3xl p-4 border border-slate-100 dark:border-transparent">
-                                    <label className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase mb-2 block text-center">{t('lbl_unit_weight')}</label>
+                            <div className="grid grid-cols-2 gap-2">
+                                <div className="bg-slate-50 dark:bg-black/20 rounded-2xl p-2.5 border border-slate-100 dark:border-transparent">
+                                    <label className="text-[9px] text-slate-400 dark:text-slate-500 font-bold uppercase mb-1 block text-center">{t('lbl_unit_weight')}</label>
                                     <input 
                                         type="number" 
                                         value={boxTara} 
                                         onChange={e => setBoxTara(e.target.value)} 
-                                        className="w-full bg-white dark:bg-slate-800 border-none rounded-2xl px-3 py-3 text-lg focus:ring-4 focus:ring-primary-100 dark:focus:ring-primary-900/20 outline-none transition-all font-mono font-bold text-center text-slate-800 dark:text-white shadow-sm" 
+                                        className="w-full bg-white dark:bg-slate-800 border-none rounded-lg px-2 py-2 text-sm focus:ring-4 focus:ring-primary-100 dark:focus:ring-primary-900/20 outline-none transition-all font-mono font-bold text-center text-slate-800 dark:text-white shadow-sm" 
                                         placeholder="0" 
                                     />
                                 </div>
-                                <div className="bg-slate-50 dark:bg-black/20 rounded-3xl p-4 border border-slate-100 dark:border-transparent">
-                                    <label className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase mb-2 block text-center">{t('lbl_qty')}</label>
+                                <div className="bg-slate-50 dark:bg-black/20 rounded-2xl p-2.5 border border-slate-100 dark:border-transparent">
+                                    <label className="text-[9px] text-slate-400 dark:text-slate-500 font-bold uppercase mb-1 block text-center">{t('lbl_qty')}</label>
                                     <input 
                                         type="number" 
                                         value={boxQty} 
                                         onChange={e => setBoxQty(e.target.value)} 
-                                        className="w-full bg-white dark:bg-slate-800 border-none rounded-2xl px-3 py-3 text-lg focus:ring-4 focus:ring-primary-100 dark:focus:ring-primary-900/20 outline-none transition-all font-mono font-bold text-center text-slate-800 dark:text-white shadow-sm" 
+                                        className="w-full bg-white dark:bg-slate-800 border-none rounded-lg px-2 py-2 text-sm focus:ring-4 focus:ring-primary-100 dark:focus:ring-primary-900/20 outline-none transition-all font-mono font-bold text-center text-slate-800 dark:text-white shadow-sm" 
                                         placeholder="0" 
                                     />
                                 </div>
@@ -1174,29 +1180,29 @@ RESPONDE SOLO UN NÚMERO (ej: 18 o 12), sin explicación.`;
                         </div>
 
                         {/* Embalajes (Right Column) */}
-                        <div className="space-y-3">
-                            <h4 className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wide flex items-center gap-2">
+                        <div className="space-y-2 pb-3">
+                            <h4 className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wide flex items-center gap-1">
                                 <span className="material-icons-round text-sm">layers</span>
                                 Embalajes
                             </h4>
-                            <div className="grid grid-cols-2 gap-3">
-                                <div className="bg-slate-50 dark:bg-black/20 rounded-3xl p-4 border border-slate-100 dark:border-transparent">
-                                    <label className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase mb-2 block text-center">{t('lbl_unit_weight')}</label>
+                            <div className="grid grid-cols-2 gap-2">
+                                <div className="bg-slate-50 dark:bg-black/20 rounded-2xl p-2.5 border border-slate-100 dark:border-transparent">
+                                    <label className="text-[9px] text-slate-400 dark:text-slate-500 font-bold uppercase mb-1 block text-center">{t('lbl_unit_weight')}</label>
                                     <input 
                                         type="number" 
                                         value={boxTaraEmbalaje} 
                                         onChange={e => setBoxTaraEmbalaje(e.target.value)} 
-                                        className="w-full bg-white dark:bg-slate-800 border-none rounded-2xl px-3 py-3 text-lg focus:ring-4 focus:ring-primary-100 dark:focus:ring-primary-900/20 outline-none transition-all font-mono font-bold text-center text-slate-800 dark:text-white shadow-sm" 
+                                        className="w-full bg-white dark:bg-slate-800 border-none rounded-lg px-2 py-2 text-sm focus:ring-4 focus:ring-primary-100 dark:focus:ring-primary-900/20 outline-none transition-all font-mono font-bold text-center text-slate-800 dark:text-white shadow-sm" 
                                         placeholder="0" 
                                     />
                                 </div>
-                                <div className="bg-slate-50 dark:bg-black/20 rounded-3xl p-4 border border-slate-100 dark:border-transparent">
-                                    <label className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase mb-2 block text-center">{t('lbl_qty')}</label>
+                                <div className="bg-slate-50 dark:bg-black/20 rounded-2xl p-2.5 border border-slate-100 dark:border-transparent">
+                                    <label className="text-[9px] text-slate-400 dark:text-slate-500 font-bold uppercase mb-1 block text-center">{t('lbl_qty')}</label>
                                     <input 
                                         type="number" 
                                         value={boxQtyEmbalaje} 
                                         onChange={e => setBoxQtyEmbalaje(e.target.value)} 
-                                        className="w-full bg-white dark:bg-slate-800 border-none rounded-2xl px-3 py-3 text-lg focus:ring-4 focus:ring-primary-100 dark:focus:ring-primary-900/20 outline-none transition-all font-mono font-bold text-center text-slate-800 dark:text-white shadow-sm" 
+                                        className="w-full bg-white dark:bg-slate-800 border-none rounded-lg px-2 py-2 text-sm focus:ring-4 focus:ring-primary-100 dark:focus:ring-primary-900/20 outline-none transition-all font-mono font-bold text-center text-slate-800 dark:text-white shadow-sm" 
                                         placeholder="0" 
                                     />
                                 </div>
@@ -1207,14 +1213,40 @@ RESPONDE SOLO UN NÚMERO (ej: 18 o 12), sin explicación.`;
             </div>
 
             {/* Bottom Actions */}
-            <div className="pt-2 pb-4">
+            <div className="pt-2 pb-4 grid grid-cols-2 gap-3">
+                <button 
+                    onClick={() => {
+                        setSupplier('');
+                        setProduct('');
+                        setBatch('');
+                        setExpirationDate('');
+                        setProductionDate('');
+                        setTemperature('');
+                        setTemperatureSuggestion(null);
+                        setGrossWeight('');
+                        setNoteWeight('');
+                        setBoxQty('');
+                        setBoxTara('');
+                        setBoxQtyEmbalaje('');
+                        setBoxTaraEmbalaje('');
+                        setEvidence(null);
+                        setAiAlert(null);
+                    }}
+                    className="bg-red-500 hover:bg-red-600 dark:bg-red-600 dark:hover:bg-red-700 text-white font-bold h-14 rounded-full shadow-xl shadow-red-500/20 dark:shadow-red-600/10 flex items-center justify-center gap-2 active:scale-95 transition-all"
+                    type="button"
+                    title="Limpiar formulario"
+                >
+                    <span className="material-icons-round pointer-events-none text-xl">delete_sweep</span>
+                    <span className="text-sm pointer-events-none tracking-wide">Limpiar</span>
+                </button>
+
                 <button 
                     onClick={handleSave}
-                    className="w-full bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-bold h-16 rounded-full shadow-xl shadow-slate-900/20 dark:shadow-white/10 flex items-center justify-center gap-3 hover:scale-[1.02] active:scale-95 transition-all"
+                    className="bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-bold h-14 rounded-full shadow-xl shadow-slate-900/20 dark:shadow-white/10 flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-95 transition-all"
                     type="button"
                 >
-                    <span className="material-icons-round pointer-events-none text-2xl">save</span>
-                    <span className="text-lg pointer-events-none tracking-wide">{t('btn_save')}</span>
+                    <span className="material-icons-round pointer-events-none text-xl">save</span>
+                    <span className="text-sm pointer-events-none tracking-wide">{t('btn_save')}</span>
                 </button>
             </div>
         </div>

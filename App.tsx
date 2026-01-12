@@ -722,6 +722,7 @@ ${record.evidence ? '📸 [FOTO]' : ''}`;
                 <GlobalWeighingChat 
                     isVisible={globalChatOpen}
                     onToggle={() => setGlobalChatOpen(!globalChatOpen)}
+                    records={records}
                 />
             )}
         </div>

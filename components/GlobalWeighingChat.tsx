@@ -3,13 +3,15 @@ import { callGeminiAPI } from '../services/geminiService';
 import { useTranslation } from '../services/i18n';
 import { useToast } from './Toast';
 import { logger } from '../services/logger';
+import { WeighingRecord } from '../types';
 
 interface GlobalWeighingChatProps {
     isVisible: boolean;
     onToggle: () => void;
+    records?: WeighingRecord[];
 }
 
-export const GlobalWeighingChat: React.FC<GlobalWeighingChatProps> = ({ isVisible, onToggle }) => {
+export const GlobalWeighingChat: React.FC<GlobalWeighingChatProps> = ({ isVisible, onToggle, records = [] }) => {
     const { t } = useTranslation();
     const { showToast } = useToast();
     const [messages, setMessages] = useState<{ role: 'user' | 'assistant'; text: string }[]>([
@@ -23,6 +25,25 @@ export const GlobalWeighingChat: React.FC<GlobalWeighingChatProps> = ({ isVisibl
     const [isListening, setIsListening] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const recognitionRef = useRef<any>(null);
+
+    // Build context from records
+    const getHistorialContext = () => {
+        if (records.length === 0) return '';
+        
+        const recentRecords = records.slice(-10); // Last 10 records
+        const stats = {
+            totalRecords: records.length,
+            avgDifference: (recentRecords.reduce((sum, r) => sum + (r.netWeight - r.noteWeight), 0) / recentRecords.length).toFixed(2),
+            commonSuppliers: [...new Set(recentRecords.map(r => r.supplier))].slice(0, 3),
+            commonProducts: [...new Set(recentRecords.map(r => r.product))].slice(0, 3),
+        };
+
+        return `HISTORIAL CONTEXT:
+- Total registros: ${stats.totalRecords}
+- Promedio diferencia reciente: ${stats.avgDifference}kg
+- Proveedores: ${stats.commonSuppliers.join(', ')}
+- Productos: ${stats.commonProducts.join(', ')}`;
+    };
 
     // Scroll to bottom
     useEffect(() => {
@@ -69,12 +90,15 @@ export const GlobalWeighingChat: React.FC<GlobalWeighingChatProps> = ({ isVisibl
         setLoading(true);
 
         try {
+            const historialContext = getHistorialContext();
             const prompt = `Eres un experto en pesaje y control de calidad. Ayuda con:
 - Diferencias de peso y tolerancias
 - Explicación de Tara, Bruto, Nota, Peso Neto
 - Anomalías y errores en pesaje
 - Buenas prácticas de pesaje
 - Regulaciones internacionales
+
+${historialContext}
 
 Responde brevemente (máximo 2-3 oraciones) de forma clara y didáctica.
 Idioma: español.`;
