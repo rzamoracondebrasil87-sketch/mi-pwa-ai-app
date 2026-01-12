@@ -225,9 +225,13 @@ export const WeighingForm: React.FC = () => {
         const diffTime = expDate.getTime() - today.getTime();
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
+        // Only alert if VERY close to expiration (less than 7 days)
+        // For products with long shelf life (months/years), don't alert
         if (diffDays < 0) return `⚠️ VENCIDO hace ${Math.abs(diffDays)} días`;
         if (diffDays <= 7) return `⚠️ CRÍTICO: Vence en ${diffDays} días`;
         
+        // For any date further away (>7 days), don't alert
+        // This avoids false alarms for frozen/cured products with long shelf life
         return null;
     };
 
