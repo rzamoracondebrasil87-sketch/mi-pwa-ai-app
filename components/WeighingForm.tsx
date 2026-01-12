@@ -683,6 +683,35 @@ RESPONDE SOLO UN NÚMERO ENTRE 2 Y 25 (ej: 15), sin explicación, sin símbolo �
                         setAiAlert(`📷 ${parts.join(', ')}.`);
                     }
 
+                    // ==================== PREDICT TEMPERATURE FROM IMAGE ====================
+                    if (!temperature) {
+                        try {
+                            const tempPrompt = `Analiza esta imagen de un producto alimentario.
+
+Basándote ÚNICAMENTE en lo que ves en la imagen (etiqueta, tipo de producto, embalaje, etc.):
+
+1. ¿Qué tipo de producto es? (ej: carne, lácteos, verduras, frutas, etc.)
+2. ¿Hay instrucciones de almacenamiento en la etiqueta?
+3. ¿Parece ser un producto fresco, refrigerado o congelado?
+
+Sugiere la temperatura óptima (en °C) para almacenar este producto.
+
+RESPONDE SOLO UN NÚMERO ENTRE 0 Y 25 (ej: 15 o 4), sin explicación, sin símbolo °.`;
+
+                            const tempResult = await analyzeImageWithGemini(base64, tempPrompt);
+                            if (tempResult) {
+                                const tempValue = parseInt(tempResult?.trim() || '0');
+                                if (tempValue > -1 && tempValue < 26) {
+                                    setTemperatureSuggestion(tempValue);
+                                    setTemperature(tempValue.toString());
+                                    logger.debug('Temperature predicted from image:', tempValue);
+                                }
+                            }
+                        } catch (tempError) {
+                            logger.debug('Temperature prediction failed:', tempError);
+                        }
+                    }
+
                     setIsReadingImage(false);
                     return;
 
@@ -925,66 +954,62 @@ RESPONDE SOLO UN NÚMERO (ej: 18 o 12), sin explicación.`;
                 onClick={() => setActiveSection('evidence')}
             >
                 {!evidence ? (
-                    <div className="p-3 flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2">
-                             <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center">
-                                <span className="material-icons-round text-lg pointer-events-none">qr_code_scanner</span>
+                    <div className="p-4 flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                             <div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center">
+                                <span className="material-icons-round text-xl pointer-events-none">image</span>
                             </div>
-                            <span className="font-bold text-slate-700 dark:text-slate-200 text-xs leading-tight">{t('lbl_evidence_section')}</span>
+                            <div className="flex flex-col gap-0.5">
+                                <span className="font-bold text-slate-700 dark:text-slate-200 text-sm">{t('lbl_evidence_section')}</span>
+                                <span className="text-[11px] text-slate-500 dark:text-slate-400">Captura o selecciona una foto</span>
+                            </div>
                         </div>
 
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-2">
                             <button 
                                 onClick={(e) => { e.stopPropagation(); cameraInputRef.current?.click(); }}
-                                className="bg-slate-800 dark:bg-white text-white dark:text-slate-900 px-3 py-2 rounded-full text-[11px] font-bold shadow-md hover:scale-105 active:scale-95 transition-all flex items-center gap-1"
+                                className="bg-primary-600 dark:bg-primary-500 text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-lg hover:scale-105 active:scale-95 transition-all flex items-center gap-2"
                             >
-                                <span className="material-icons-round text-xs pointer-events-none">photo_camera</span>
+                                <span className="material-icons-round text-sm pointer-events-none">photo_camera</span>
                                 {t('btn_camera')}
                             </button>
                             <button 
                                 onClick={(e) => { e.stopPropagation(); galleryInputRef.current?.click(); }}
-                                className="bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-200 w-9 h-9 rounded-full flex items-center justify-center border border-slate-200 dark:border-transparent hover:bg-slate-200 dark:hover:bg-slate-600 active:scale-95 transition-all"
+                                className="bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-200 w-10 h-10 rounded-xl flex items-center justify-center border border-slate-200 dark:border-transparent hover:bg-slate-200 dark:hover:bg-slate-600 active:scale-95 transition-all"
                             >
-                                <span className="material-icons-round text-base pointer-events-none">image</span>
+                                <span className="material-icons-round text-lg pointer-events-none">image</span>
                             </button>
                         </div>
                     </div>
                 ) : (
-                    <div className="p-3 flex items-stretch gap-3">
-                         {/* Temperatura - Izquierda */}
-                         <div className="flex flex-col justify-center min-w-fit">
-                            <div className="flex items-center justify-center gap-1.5 bg-slate-50 dark:bg-black/30 border border-slate-200 dark:border-slate-700/50 rounded-2xl px-3 py-3">
-                                <div className="flex flex-col items-center gap-1">
-                                    <span className="material-icons-round text-slate-400 dark:text-slate-500 text-base pointer-events-none">thermostat</span>
-                                    {temperatureSuggestion ? (
-                                        <div className="text-center">
-                                            <div className="font-black text-xl text-primary-600 dark:text-primary-400">{temperatureSuggestion}°</div>
-                                            <div className="text-[8px] text-primary-600 dark:text-primary-400 font-bold">IA</div>
-                                        </div>
-                                    ) : (
-                                        <div className="text-slate-400 dark:text-slate-500 text-xs font-bold">-</div>
-                                    )}
-                                </div>
+                    <div className="p-4 flex items-center justify-between gap-3 bg-gradient-to-r from-slate-50 to-transparent dark:from-slate-900/20 dark:to-transparent">
+                         {/* Mensaje de Foto Tomada */}
+                         <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-full bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 flex items-center justify-center flex-shrink-0">
+                                <span className="material-icons-round text-xl pointer-events-none">check</span>
+                            </div>
+                            <div className="flex flex-col gap-0.5">
+                                <span className="font-bold text-slate-700 dark:text-slate-200 text-sm">Foto tomada</span>
+                                <span className="text-[11px] text-slate-500 dark:text-slate-400">IA analizando para temperatura...</span>
                             </div>
                          </div>
 
-                         {/* Foto - Derecha, cuadrado */}
-                         <div className="relative rounded-2xl overflow-hidden w-28 h-28 flex-shrink-0 group">
-                             <img src={evidence} alt="Evidence" className="w-full h-full object-cover" />
-                             <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent flex items-end justify-between p-2">
-                                <div className="flex items-center gap-1 text-white">
-                                    <div className="bg-green-500 rounded-full p-0.5">
-                                        <span className="material-icons-round text-white text-[10px] pointer-events-none block">check</span>
-                                    </div>
-                                    <span className="text-[9px] font-bold shadow-black drop-shadow-md">{t('lbl_photo_attached')}</span>
-                                </div>
-                                <button 
-                                    onClick={(e) => { e.stopPropagation(); setEvidence(null); setAiAlert(null); setBatch(''); setExpirationDate(''); setProductionDate(''); }}
-                                    className="bg-white/20 hover:bg-white/40 text-white p-1.5 rounded-full backdrop-blur-md transition-colors border border-white/20"
-                                >
-                                    <span className="material-icons-round text-base pointer-events-none">delete</span>
-                                </button>
-                             </div>
+                         {/* Botón Delete y Cámara */}
+                         <div className="flex items-center gap-2">
+                            <button 
+                                onClick={(e) => { e.stopPropagation(); cameraInputRef.current?.click(); }}
+                                className="bg-primary-600 dark:bg-primary-500 text-white p-2.5 rounded-xl hover:scale-105 active:scale-95 transition-all"
+                                title="Retomar foto"
+                            >
+                                <span className="material-icons-round text-lg pointer-events-none">photo_camera</span>
+                            </button>
+                            <button 
+                                onClick={(e) => { e.stopPropagation(); setEvidence(null); setAiAlert(null); setBatch(''); setExpirationDate(''); setProductionDate(''); }}
+                                className="bg-red-50 dark:bg-red-500/20 hover:bg-red-100 dark:hover:bg-red-500/30 text-red-600 dark:text-red-400 p-2.5 rounded-xl transition-colors"
+                                title="Eliminar foto"
+                            >
+                                <span className="material-icons-round text-lg pointer-events-none">delete</span>
+                            </button>
                          </div>
                     </div>
                 )}
