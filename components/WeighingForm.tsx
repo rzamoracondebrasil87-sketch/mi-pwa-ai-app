@@ -613,27 +613,65 @@ RESPONDE SOLO UN NÚMERO ENTRE 2 Y 25 (ej: 15), sin explicación, sin símbolo �
         // 2. Try Gemini (with rotation) if Vision didn't work
         try {
             logger.debug('Attempting Gemini API...');
-            const prompt = `
-            Analyze this image of a product label.
-            
-            Tasks:
-            1. Identify Product Name: This is usually the BIGGEST text (e.g., "ASA RESF", "Cebola", "Tomate"). It describes WHAT the item is.
-            2. Identify Supplier/Brand: This is usually a logo or smaller text (e.g., "Seara", "Friboi", "AgroX").
-            3. Dates: Find Expiration (Validade/Venc) and Production (Fab/Prod).
-            4. Batch: Find "Lote" or "L:".
-            5. Tara: Find packaging weight.
+            const prompt = `ESPECIALISTA EN LECTURA DE ETIQUETAS INDUSTRIALES ALIMENTARIAS
 
-            Strictly distinguish Product from Supplier. If you see "ASA RESF", that is likely the Product (Asa Resfriada), not the Supplier.
-            
-            Respond in JSON format only: { 
-                "supplier": string,
-                "product": string,
-                "expiration": string, 
-                "production": string, 
-                "batch": string, 
-                "tara": number | null
-            }.
-            `;
+TU ROL: Especialista en lectura de etiquetas de productos alimentarios brasileños (cárnicos, congelados, resfriados).
+
+OBJETIVO: Extraer, validar y estructurar información. NO inferir sin base visible.
+
+REGLAS ABSOLUTAS:
+❌ NO inventar datos
+❌ NO asumir valores por contexto
+❌ NO mezclar Peso Bruto con Peso Líquido
+❌ NO confundir fecha de producción con validez
+Si un dato no es visible, marcar como "indeterminado"
+
+ORDEN DE LECTURA (obligatorio):
+1. Texto impreso en cuadros/tablas
+2. Campos con títulos claros
+3. Valores numéricos con unidad
+4. Sellos oficiales (SIF, MAPA)
+5. Marcas/logos
+6. Texto secundario
+
+CAMPOS A EXTRAER:
+- Produto: nombre exacto visible
+- Tipo: congelado, resfriado, fresco
+- Fornecedor: marca/proveedor
+- Registro SIF: número si existe
+- Peso Líquido (kg): valor exacto
+- Peso Bruto (kg): valor exacto
+- Data de Produção: formato DD/MM/AAAA
+- Data de Validade: formato DD/MM/AAAA
+- Lote: código exacto (no confundir con código de barras)
+- Temperatura en Rótulo: valor visible (ej: "-12°C")
+
+VALIDACIONES ANTES DE RESPONDER:
+✓ Peso Bruto ≥ Peso Líquido (si no, marcar ⚠️ posible erro)
+✓ Produção < Validade (si no, marcar ⚠️ datas inconsistentes)
+
+NIVEL DE CONFIANZA:
+- alta: texto claro y completo
+- media: texto parcial legible
+- baja: campos importantes dudosos
+
+RESPONDE EN JSON EXACTO (completa todos los campos):
+{
+  "produto": "string",
+  "tipo": "congelado|resfriado|fresco|indeterminado",
+  "fornecedor": "string",
+  "sif": "string o null",
+  "peso_liquido_kg": number o null,
+  "peso_bruto_kg": number o null,
+  "data_fabricacao": "DD/MM/AAAA o indeterminado",
+  "data_validade": "DD/MM/AAAA o indeterminado",
+  "lote": "string o indeterminado",
+  "temperatura_rotulo": "string (ej: -12°C) o indeterminado",
+  "validaciones": "string (notas si hay inconsistencias)",
+  "confianza_leitura": "alta|media|baja"
+}
+
+Analiza con cuidado, no rápido.`;
 
             const text = await analyzeImageWithGemini(base64, prompt);
             if (text) {
@@ -649,17 +687,20 @@ RESPONDE SOLO UN NÚMERO ENTRE 2 Y 25 (ej: 15), sin explicación, sin símbolo �
                 try {
                     const data = JSON.parse(jsonString);
                     
-                    if (data.supplier && !supplier) setSupplier(data.supplier);
-                    if (data.product && !product) setProduct(data.product);
-                    if (data.batch && !batch) setBatch(data.batch);
-                    if (data.expiration && !expirationDate) setExpirationDate(data.expiration);
-                    if (data.production && !productionDate) setProductionDate(data.production);
+                    // Map new JSON structure to form fields
+                    if (data.fornecedor && !supplier) setSupplier(data.fornecedor);
+                    if (data.produto && !product) setProduct(data.produto);
+                    if (data.lote && data.lote !== 'indeterminado' && !batch) setBatch(data.lote);
+                    if (data.data_validade && data.data_validade !== 'indeterminado' && !expirationDate) setExpirationDate(data.data_validade);
+                    if (data.data_fabricacao && data.data_fabricacao !== 'indeterminado' && !productionDate) setProductionDate(data.data_fabricacao);
                     
+                    // Handle peso_liquido_kg for tara calculation (if needed)
                     let normalizedTara: number | null = null;
-                    if (data.tara) {
-                        let val = Number(data.tara);
-                        if (val < 10) val = val * 1000;
-                        normalizedTara = Math.round(val);
+                    if (data.peso_bruto_kg && data.peso_liquido_kg) {
+                        const taraDiff = data.peso_bruto_kg - data.peso_liquido_kg;
+                        if (taraDiff > 0) {
+                            normalizedTara = Math.round(taraDiff * 1000);
+                        }
                     }
 
                     if (normalizedTara !== null && !boxTara) {
@@ -667,28 +708,41 @@ RESPONDE SOLO UN NÚMERO ENTRE 2 Y 25 (ej: 15), sin explicación, sin símbolo �
                         setShowBoxes(true);
                     }
 
+                    // Build AI alert message
                     const parts = [];
-                    if (data.product) parts.push(`${t('ph_product')} ${data.product}`);
-                    if (data.supplier) parts.push(`${t('ph_supplier')} ${data.supplier}`);
-                    if (data.batch) parts.push(`${t('ph_batch').toLowerCase()} ${data.batch}`);
-                    if (data.production) parts.push(`${t('ph_production').toLowerCase()} ${data.production}`);
-                    if (data.expiration) parts.push(`${t('ph_expiration').toLowerCase()} ${data.expiration}`);
-                    if (normalizedTara !== null) parts.push(`tara ${normalizedTara}g`);
+                    if (data.produto) parts.push(`${t('ph_product')} ${data.produto}`);
+                    if (data.fornecedor) parts.push(`${t('ph_supplier')} ${data.fornecedor}`);
+                    if (data.lote && data.lote !== 'indeterminado') parts.push(`${t('ph_batch').toLowerCase()} ${data.lote}`);
+                    if (data.data_fabricacao && data.data_fabricacao !== 'indeterminado') parts.push(`${t('ph_production').toLowerCase()} ${data.data_fabricacao}`);
+                    if (data.data_validade && data.data_validade !== 'indeterminado') parts.push(`${t('ph_expiration').toLowerCase()} ${data.data_validade}`);
+                    if (data.peso_liquido_kg) parts.push(`${data.peso_liquido_kg}kg neto`);
+                    if (data.validaciones) parts.push(`⚠️ ${data.validaciones}`);
 
-                    const riskMsg = data.expiration ? checkExpirationRisk(data.expiration) : null;
+                    const riskMsg = data.data_validade && data.data_validade !== 'indeterminado' ? checkExpirationRisk(data.data_validade) : null;
                     
                     if (riskMsg) {
                         setAiAlert(riskMsg);
                     } else if (parts.length > 0) {
-                        setAiAlert(`📷 ${parts.join(', ')}.`);
+                        setAiAlert(`📷 ${parts.join(', ')}. Confianza: ${data.confianza_leitura || 'media'}`);
                     }
 
-                    // ==================== PREDICT TEMPERATURE FROM IMAGE ====================
+                    // ==================== TEMPERATURE FROM LABEL + AI PREDICTION ====================
                     if (!temperature) {
                         try {
-                            const tempPrompt = `Analiza esta imagen de un producto alimentario.
+                            // First: Check if label has temperature info
+                            if (data.temperatura_rotulo && data.temperatura_rotulo !== 'indeterminado') {
+                                logger.debug('Temperature from label:', data.temperatura_rotulo);
+                                const tempMatch = data.temperatura_rotulo.match(/-?\d+/);
+                                if (tempMatch) {
+                                    const labelTemp = parseInt(tempMatch[0]);
+                                    setTemperatureSuggestion(labelTemp);
+                                    setTemperature(labelTemp.toString());
+                                }
+                            } else {
+                                // If no label temp, use Gemini to predict from image
+                                const tempPrompt = `Analiza esta imagen de un producto alimentario.
 
-Basándote ÚNICAMENTE en lo que ves en la imagen (etiqueta, tipo de producto, embalaje, etc.):
+Basándote ÚNICAMENTE en lo que ves (etiqueta, tipo de producto, embalaje, etc.):
 
 1. ¿Qué tipo de producto es? (ej: carne, lácteos, verduras, frutas, etc.)
 2. ¿Hay instrucciones de almacenamiento en la etiqueta?
@@ -698,13 +752,14 @@ Sugiere la temperatura óptima (en °C) para almacenar este producto.
 
 RESPONDE SOLO UN NÚMERO ENTRE 0 Y 25 (ej: 15 o 4), sin explicación, sin símbolo °.`;
 
-                            const tempResult = await analyzeImageWithGemini(base64, tempPrompt);
-                            if (tempResult) {
-                                const tempValue = parseInt(tempResult?.trim() || '0');
-                                if (tempValue > -1 && tempValue < 26) {
-                                    setTemperatureSuggestion(tempValue);
-                                    setTemperature(tempValue.toString());
-                                    logger.debug('Temperature predicted from image:', tempValue);
+                                const tempResult = await analyzeImageWithGemini(base64, tempPrompt);
+                                if (tempResult) {
+                                    const tempValue = parseInt(tempResult?.trim() || '0');
+                                    if (tempValue > -1 && tempValue < 26) {
+                                        setTemperatureSuggestion(tempValue);
+                                        setTemperature(tempValue.toString());
+                                        logger.debug('Temperature predicted from image:', tempValue);
+                                    }
                                 }
                             }
                         } catch (tempError) {
