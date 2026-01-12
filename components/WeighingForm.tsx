@@ -527,6 +527,45 @@ export const WeighingForm: React.FC = () => {
             foundData = true;
         }
 
+        // ==================== AUTO-SUGGEST TEMPERATURE (if product found) ====================
+        if ((ocrData.product !== 'review' || product) && !temperature) {
+            const productName = ocrData.product !== 'review' ? ocrData.product : product;
+            const supplierName = ocrData.supplier !== 'review' ? ocrData.supplier : supplier;
+            const expDate = foundExpiration || expirationDate;
+            
+            // Trigger automatic temperature suggestion asynchronously
+            (async () => {
+                try {
+                    const month = new Date().getMonth() + 1;
+                    const season = month >= 3 && month <= 8 ? 'verano (cálido)' : 'invierno (frío)';
+                    
+                    const prompt = `Eres experto en almacenamiento y logística de productos alimentarios.
+            
+Producto: ${productName}
+Proveedor: ${supplierName || 'N/A'}
+Temporada actual: ${season}
+Fecha de vencimiento: ${expDate || 'N/A'}
+
+Sugiere UNA temperatura óptima (en °C) para almacenar este producto, considerando:
+- Tipo de producto
+- Temporada/clima
+- Regulaciones internacionales
+
+RESPONDE SOLO UN NÚMERO (ej: 18 o 12), sin explicación.`;
+
+                    const result = await callGeminiAPI(prompt);
+                    const temp = parseInt(result?.trim() || '0');
+                    
+                    if (temp > 0 && temp < 50) {
+                        setTemperatureSuggestion(temp);
+                        setTemperature(temp.toString());
+                    }
+                } catch (e) {
+                    logger.debug('Auto temperature suggestion skipped:', e);
+                }
+            })();
+        }
+
         // ==================== FEEDBACK MESSAGE ====================
         if (foundData) {
             const riskMsg = checkExpirationRisk(foundExpiration);
@@ -1019,27 +1058,31 @@ RESPONDE SOLO UN NÚMERO (ej: 18 o 12), sin explicación.`;
                             </div>
                         </div>
 
-                        <div className="flex items-center gap-2 bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-transparent rounded-2xl px-3 py-3 focus-within:ring-4 focus-within:ring-primary-100 dark:focus-within:ring-primary-900/20 transition-all group">
-                            <span className="material-icons-round text-slate-400 dark:text-slate-500 text-lg pointer-events-none">thermostat</span>
-                            <input 
-                                type="number" 
-                                value={temperature}
-                                onChange={e => setTemperature(e.target.value)}
-                                placeholder="Temperatura (°C)"
-                                min="0"
-                                max="50"
-                                className="w-full bg-transparent text-slate-800 dark:text-white font-bold text-base outline-none placeholder:text-slate-300 dark:placeholder:text-slate-600"
-                            />
-                            <span className="text-slate-400 dark:text-slate-500 font-bold text-sm">°C</span>
-                            <button
-                                type="button"
-                                onClick={suggestTemperature}
-                                disabled={isAnalyzing || !product}
-                                className={`p-1.5 rounded-lg transition-all ${temperatureSuggestion ? 'bg-primary-100 dark:bg-primary-500/20 text-primary-600 dark:text-primary-300' : 'hover:bg-slate-200 dark:hover:bg-white/10 text-slate-400 dark:text-slate-500'}`}
-                                title="Sugerir temperatura con IA"
-                            >
-                                <span className="material-icons-round text-base pointer-events-none">auto_awesome</span>
-                            </button>
+                        <div className="flex items-center justify-between gap-2 bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-transparent rounded-2xl px-3 py-3 focus-within:ring-4 focus-within:ring-primary-100 dark:focus-within:ring-primary-900/20 transition-all group">
+                            <div className="flex items-center gap-2 flex-1">
+                                <span className="material-icons-round text-slate-400 dark:text-slate-500 text-lg pointer-events-none">thermostat</span>
+                                <input 
+                                    type="number" 
+                                    value={temperature}
+                                    onChange={e => setTemperature(e.target.value)}
+                                    placeholder="Temperatura (°C)"
+                                    min="0"
+                                    max="50"
+                                    className="w-full bg-transparent text-slate-800 dark:text-white font-bold text-base outline-none placeholder:text-slate-300 dark:placeholder:text-slate-600"
+                                />
+                                <span className="text-slate-400 dark:text-slate-500 font-bold text-sm">°C</span>
+                            </div>
+                            {temperatureSuggestion && !temperature && (
+                                <div className="px-2.5 py-1 bg-primary-100 dark:bg-primary-500/20 text-primary-700 dark:text-primary-300 rounded-lg text-[10px] font-bold flex items-center gap-1 whitespace-nowrap">
+                                    <span>🌡️</span>
+                                    <span>{temperatureSuggestion}°</span>
+                                </div>
+                            )}
+                            {temperatureSuggestion && (
+                                <div className="text-primary-600 dark:text-primary-400 opacity-70" title="IA sugirió esta temperatura">
+                                    <span className="material-icons-round text-base pointer-events-none">auto_awesome</span>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -1050,30 +1093,30 @@ RESPONDE SOLO UN NÚMERO (ej: 18 o 12), sin explicación.`;
                 className={`rounded-[2.5rem] border transition-all duration-300 overflow-hidden ${getSectionStyle('weights')}`}
                 onFocus={() => setActiveSection('weights')}
             >
-                <div className="p-4">
-                     <div className="flex items-center gap-3 mb-3 opacity-60 dark:opacity-80 text-slate-500 dark:text-slate-400">
-                        <span className="material-icons-round pointer-events-none text-lg">scale</span>
-                        <span className="text-xs font-bold uppercase tracking-wider">{t('lbl_weighing')}</span>
+                <div className="p-3">
+                     <div className="flex items-center gap-2 mb-2.5 opacity-60 dark:opacity-80 text-slate-500 dark:text-slate-400">
+                        <span className="material-icons-round pointer-events-none text-base">scale</span>
+                        <span className="text-[10px] font-bold uppercase tracking-wider">{t('lbl_weighing')}</span>
                     </div>
                     
-                    <div className="grid grid-cols-2 gap-3">
-                        <div className="bg-slate-100 dark:bg-black/20 rounded-2xl p-3 border border-slate-200 dark:border-transparent focus-within:ring-4 focus-within:ring-primary-100 dark:focus-within:ring-primary-900/20 transition-all">
-                            <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">{t('lbl_note_weight')}</label>
-                            <div className="flex items-baseline gap-1">
+                    <div className="grid grid-cols-2 gap-2">
+                        <div className="bg-slate-100 dark:bg-black/20 rounded-xl p-2.5 border border-slate-200 dark:border-transparent focus-within:ring-4 focus-within:ring-primary-100 dark:focus-within:ring-primary-900/20 transition-all">
+                            <label className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-0.5">{t('lbl_note_weight')}</label>
+                            <div className="flex items-baseline gap-0.5">
                                 <input 
                                     ref={noteInputRef}
                                     type="number" 
                                     value={noteWeight}
                                     onChange={e => setNoteWeight(e.target.value)}
-                                    className="w-full bg-transparent text-2xl font-black text-slate-800 dark:text-white outline-none placeholder:text-slate-300 dark:placeholder:text-slate-700 font-mono tracking-tight"
+                                    className="w-full bg-transparent text-xl font-black text-slate-800 dark:text-white outline-none placeholder:text-slate-300 dark:placeholder:text-slate-700 font-mono tracking-tight"
                                     placeholder="0"
                                 />
-                                <span className="text-xs text-slate-400 dark:text-slate-600 font-bold">kg</span>
+                                <span className="text-[9px] text-slate-400 dark:text-slate-600 font-bold">kg</span>
                             </div>
                         </div>
-                        <div className="bg-slate-100 dark:bg-black/20 rounded-2xl p-3 border border-slate-200 dark:border-transparent focus-within:ring-4 focus-within:ring-primary-100 dark:focus-within:ring-primary-900/20 transition-all">
-                            <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">{t('lbl_gross_weight')}</label>
-                             <div className="flex items-baseline gap-1">
+                        <div className="bg-slate-100 dark:bg-black/20 rounded-xl p-2.5 border border-slate-200 dark:border-transparent focus-within:ring-4 focus-within:ring-primary-100 dark:focus-within:ring-primary-900/20 transition-all">
+                            <label className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-0.5">{t('lbl_gross_weight')}</label>
+                             <div className="flex items-baseline gap-0.5">
                                 <input 
                                     ref={grossInputRef}
                                     type="text" 
@@ -1083,10 +1126,10 @@ RESPONDE SOLO UN NÚMERO (ej: 18 o 12), sin explicación.`;
                                         setActiveSection('weights');
                                         setShowBoxes(false); // Auto-collapse tara when moving to gross weight
                                     }}
-                                    className="w-full bg-transparent text-2xl font-black text-slate-800 dark:text-white outline-none placeholder:text-slate-300 dark:placeholder:text-slate-700 font-mono tracking-tight"
+                                    className="w-full bg-transparent text-xl font-black text-slate-800 dark:text-white outline-none placeholder:text-slate-300 dark:placeholder:text-slate-700 font-mono tracking-tight"
                                     placeholder="0 o 50, 52, 49"
                                 />
-                                <span className="text-xs text-slate-400 dark:text-slate-600 font-bold">kg</span>
+                                <span className="text-[9px] text-slate-400 dark:text-slate-600 font-bold">kg</span>
                             </div>
                             {grossWeight.includes(',') && (
                                 <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
@@ -1121,14 +1164,21 @@ RESPONDE SOLO UN NÚMERO (ej: 18 o 12), sin explicación.`;
                     </div>
                     
                     {!showBoxes && (Number(boxQty) > 0 || Number(boxTara) > 0 || Number(boxQtyEmbalaje) > 0 || Number(boxTaraEmbalaje) > 0) ? (
-                        <div className="flex items-center gap-1">
-                             <span className="font-mono text-sm font-bold bg-slate-800 dark:bg-white text-white dark:text-slate-900 px-2.5 py-1 rounded-full shadow-md">
-                                {totalTara.toFixed(1)}kg
-                             </span>
-                             <span className="font-mono text-sm font-bold bg-slate-800 dark:bg-white text-white dark:text-slate-900 px-2.5 py-1 rounded-full shadow-md">
-                                {totalTara.toFixed(1)}kg
-                             </span>
-                        </div>
+                        <div className="flex flex-col items-end gap-0.5 text-[10px] text-slate-600 dark:text-slate-300 font-mono">
+                             {Number(boxQty) > 0 && Number(boxTara) > 0 && (
+                                 <div className="font-medium">
+                                     📦 Cx: {Number(boxQty)} × {(Number(boxTara)/1000).toFixed(3)} = {(Number(boxQty) * Number(boxTara) / 1000).toFixed(3)} kg
+                                 </div>
+                             )}
+                             {Number(boxQtyEmbalaje) > 0 && Number(boxTaraEmbalaje) > 0 && (
+                                 <div className="font-medium">
+                                     📦 Emb: {Number(boxQtyEmbalaje)} × {(Number(boxTaraEmbalaje)/1000).toFixed(3)} = {(Number(boxQtyEmbalaje) * Number(boxTaraEmbalaje) / 1000).toFixed(3)} kg
+                                 </div>
+                             )}
+                             <div className="font-bold text-slate-800 dark:text-white border-t border-slate-300 dark:border-slate-600 pt-0.5 mt-0.5">
+                                 Σ {totalTara.toFixed(3)} kg
+                             </div>
+                         </div>
                     ) : (
                          <div className={`w-8 h-8 rounded-full flex items-center justify-center bg-slate-100 dark:bg-slate-800 transition-transform ${showBoxes ? 'rotate-180 bg-slate-200 dark:bg-slate-700' : ''}`}>
                             <span className="material-icons-round text-sm text-slate-400 dark:text-slate-400 pointer-events-none">expand_more</span>

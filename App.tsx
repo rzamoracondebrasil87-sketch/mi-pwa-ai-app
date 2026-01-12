@@ -604,33 +604,38 @@ ${record.evidence ? '📸 [FOTO]' : ''}`;
                                                 </div>
 
                                                 {/* Data Grid */}
-                                                <div className="bg-slate-50 dark:bg-black/20 rounded-3xl p-4 mb-4 grid grid-cols-3 gap-2 text-center relative">
-                                                    <div className="flex flex-col">
-                                                        <span className="text-[9px] uppercase text-slate-400 dark:text-slate-500 font-bold mb-1 tracking-wider">Nota</span>
-                                                        <span className="font-mono font-bold text-slate-700 dark:text-slate-200 text-lg">{record.noteWeight}<span className="text-xs text-slate-500 dark:text-slate-400 ml-0.5">kg</span></span>
+                                                <div className="bg-slate-50 dark:bg-black/20 rounded-2xl p-3 mb-3 grid grid-cols-3 gap-2 text-center relative">
+                                                    <div className="flex flex-col justify-center py-1">
+                                                        <span className="text-[8px] uppercase text-slate-400 dark:text-slate-500 font-bold mb-0.5 tracking-wider">Nota</span>
+                                                        <span className="font-mono font-bold text-slate-700 dark:text-slate-200 text-base">{record.noteWeight}<span className="text-[10px] text-slate-500 dark:text-slate-400 ml-0.5">kg</span></span>
                                                     </div>
                                                     
-                                                    <div className="flex flex-col border-l border-r border-slate-200 dark:border-slate-700/50">
-                                                        <span className="text-[9px] uppercase text-slate-400 dark:text-slate-500 font-bold mb-1 tracking-wider">Bruto</span>
-                                                        <span className="font-mono font-bold text-slate-700 dark:text-slate-200 text-lg">{record.grossWeight}<span className="text-xs text-slate-500 dark:text-slate-400 ml-0.5">kg</span></span>
+                                                    <div className="flex flex-col justify-center py-1 border-l border-r border-slate-200 dark:border-slate-700/50">
+                                                        <span className="text-[8px] uppercase text-slate-400 dark:text-slate-500 font-bold mb-0.5 tracking-wider">Bruto</span>
+                                                        <span className="font-mono font-bold text-slate-700 dark:text-slate-200 text-base">{record.grossWeight}<span className="text-[10px] text-slate-500 dark:text-slate-400 ml-0.5">kg</span></span>
                                                     </div>
 
                                                     <div className="flex flex-col">
                                                         <span className="text-[9px] uppercase text-slate-400 dark:text-slate-500 font-bold mb-1 tracking-wider">Tara</span>
-                                                        <div className="flex flex-col items-center justify-center gap-0.5">
-                                                            {record.boxes && record.boxes.qty > 0 && (
-                                                                <div className="text-xs font-medium text-slate-600 dark:text-slate-300 flex items-center gap-1">
-                                                                    <span className="text-sm">📦</span>
-                                                                    <span>{record.boxes.qty} × {record.boxes.unitTara}g</span>
-                                                                </div>
-                                                            )}
-                                                            {record.taraEmbalaje && record.taraEmbalaje.qty > 0 && (
-                                                                <div className="text-xs font-medium text-slate-600 dark:text-slate-300 flex items-center gap-1">
-                                                                    <span className="text-sm">📋</span>
-                                                                    <span>{record.taraEmbalaje.qty} × {record.taraEmbalaje.unitTara}g</span>
-                                                                </div>
-                                                            )}
-                                                            <span className="font-mono font-bold text-slate-700 dark:text-slate-200 text-lg">{record.taraTotal.toFixed(1)}<span className="text-xs text-slate-500 dark:text-slate-400 ml-0.5">kg</span></span>
+                                                        <div className="flex flex-col items-center justify-center gap-1">
+                                                            {/* Total - PROMINENTE */}
+                                                            <span className="font-mono font-black text-slate-700 dark:text-slate-100 text-lg leading-none">{record.taraTotal.toFixed(1)}<span className="text-xs text-slate-500 dark:text-slate-400 ml-0.5">kg</span></span>
+                                                            
+                                                            {/* Detalles - pequeño */}
+                                                            <div className="flex flex-col items-center gap-0.5 text-[10px] text-slate-500 dark:text-slate-400">
+                                                                {record.boxes && record.boxes.qty > 0 && (
+                                                                    <div className="flex items-center gap-0.5">
+                                                                        <span>📦</span>
+                                                                        <span className="font-medium">{record.boxes.qty} × {record.boxes.unitTara}g</span>
+                                                                    </div>
+                                                                )}
+                                                                {record.taraEmbalaje && record.taraEmbalaje.qty > 0 && (
+                                                                    <div className="flex items-center gap-0.5">
+                                                                        <span>📋</span>
+                                                                        <span className="font-medium">{record.taraEmbalaje.qty} × {record.taraEmbalaje.unitTara}g</span>
+                                                                    </div>
+                                                                )}
+                                                            </div>
                                                         </div>
                                                     </div>
                                                 </div>

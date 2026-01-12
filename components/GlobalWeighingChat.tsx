@@ -45,6 +45,43 @@ export const GlobalWeighingChat: React.FC<GlobalWeighingChatProps> = ({ isVisibl
 - Productos: ${stats.commonProducts.join(', ')}`;
     };
 
+    // IA - Detect anomalies silently
+    const detectAnomalies = () => {
+        if (records.length < 2) return null;
+        
+        const anomalies: string[] = [];
+        const lastRecord = records[records.length - 1];
+        const historicRecords = records.slice(-20).slice(0, -1); // Last 20, excluding current
+        
+        // Check tara anomaly
+        const sameProductRecords = historicRecords.filter(r => r.product === lastRecord.product && r.supplier === lastRecord.supplier);
+        if (sameProductRecords.length > 0) {
+            const avgHistoricTara = sameProductRecords.reduce((sum, r) => sum + r.taraTotal, 0) / sameProductRecords.length;
+            const taraDeviation = Math.abs((lastRecord.taraTotal - avgHistoricTara) / avgHistoricTara);
+            
+            if (taraDeviation > 0.2) { // 20% deviation
+                anomalies.push(`⚠️ A IA detectou uma tara fora do padrão habitual (${(taraDeviation * 100).toFixed(0)}% diferença)`);
+            }
+        }
+        
+        // Check weight difference anomaly
+        if (Math.abs(lastRecord.netWeight - lastRecord.noteWeight) > 0.5) {
+            anomalies.push(`⚠️ Diferença incomum entre bruto, nota e tara (${Math.abs(lastRecord.netWeight - lastRecord.noteWeight).toFixed(2)}kg)`);
+        }
+        
+        // Check quantity anomaly
+        if (sameProductRecords.length > 0 && lastRecord.boxes) {
+            const avgQty = sameProductRecords.reduce((sum, r) => sum + (r.boxes?.qty || 0), 0) / sameProductRecords.length;
+            const qtyDeviation = Math.abs((lastRecord.boxes.qty - avgQty) / (avgQty || 1));
+            
+            if (qtyDeviation > 0.3) { // 30% deviation
+                anomalies.push(`💡 Normalmente este produto usa ${Math.round(avgQty)} caixas. Hoje foram ${lastRecord.boxes.qty}`);
+            }
+        }
+        
+        return anomalies.length > 0 ? anomalies : null;
+    };
+
     // Scroll to bottom
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -162,6 +199,18 @@ Idioma: español.`;
 
                         {/* Messages */}
                         <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                            {/* Anomaly Alerts (silent detection) */}
+                            {detectAnomalies()?.map((anomaly, idx) => (
+                                <div
+                                    key={`anomaly-${idx}`}
+                                    className="flex justify-start opacity-80"
+                                >
+                                    <div className="bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 p-2.5 rounded-2xl rounded-bl-none text-xs leading-relaxed text-amber-800 dark:text-amber-200 max-w-xs">
+                                        {anomaly}
+                                    </div>
+                                </div>
+                            ))}
+                            
                             {messages.map((msg, idx) => (
                                 <div
                                     key={idx}
