@@ -538,34 +538,25 @@ export const WeighingForm: React.FC = () => {
         if ((ocrData.product !== 'review' || product) && !temperature) {
             const productName = ocrData.product !== 'review' ? ocrData.product : product;
             const supplierName = ocrData.supplier !== 'review' ? ocrData.supplier : supplier;
-            const expDate = foundExpiration || expirationDate;
             
-            // Trigger automatic temperature suggestion asynchronously using PHOTO information
+            // Trigger automatic temperature suggestion based on product + supplier only (NO OCR)
             (async () => {
                 try {
                     const month = new Date().getMonth() + 1;
                     const season = month >= 3 && month <= 8 ? 'verano (cálido)' : 'invierno (frío)';
                     
-                    // Improve prompt to use visual information from photo
                     const prompt = `Eres experto en almacenamiento y logística de productos alimentarios.
 
-INFORMACIÓN DE LA FOTO Y ETIQUETA:
-Producto identificado: ${productName}
-Proveedor: ${supplierName || 'N/A'}
+Producto: ${productName}
+Proveedor: ${supplierName || 'desconocido'}
 Temporada actual: ${season}
-Fecha de vencimiento: ${expDate || 'N/A'}
-Información visual: ${text.substring(0, 200)} (primeras líneas de la foto)
 
-Basándote en:
+Sugiere UNA temperatura óptima (en °C) para almacenar este producto, considerando:
 - El tipo de producto
-- La información visual en la etiqueta/embalaje
 - La temporada/clima actual
 - Regulaciones internacionales de almacenamiento
-- Requisitos específicos del producto
 
-Sugiere UNA temperatura óptima (en °C) para almacenar este producto.
-
-RESPONDE SOLO UN NÚMERO ENTRE 2 Y 25 (ej: 18 o 12), sin explicación, sin símbolo °.`;
+RESPONDE SOLO UN NÚMERO ENTRE 2 Y 25 (ej: 15), sin explicación, sin símbolo °.`;
 
                     const result = await callGeminiAPI(prompt);
                     const temp = parseInt(result?.trim() || '0');
@@ -1076,29 +1067,7 @@ RESPONDE SOLO UN NÚMERO (ej: 18 o 12), sin explicación.`;
                             />
                         </div>
 
-                        <div className="grid grid-cols-2 gap-3">
-                            <div className="flex items-center gap-2 bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-transparent rounded-2xl px-3 py-3 focus-within:ring-4 focus-within:ring-primary-100 dark:focus-within:ring-primary-900/20 transition-all">
-                                <span className="material-icons-round text-slate-400 dark:text-slate-500 text-lg pointer-events-none">factory</span>
-                                <input 
-                                    type="text" 
-                                    value={productionDate}
-                                    onChange={e => setProductionDate(e.target.value)}
-                                    placeholder={t('ph_production')}
-                                    className="w-full bg-transparent text-slate-800 dark:text-white font-bold text-sm outline-none placeholder:text-slate-300 dark:placeholder:text-slate-600"
-                                />
-                            </div>
-                            <div className="flex items-center gap-2 bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-transparent rounded-2xl px-3 py-3 focus-within:ring-4 focus-within:ring-primary-100 dark:focus-within:ring-primary-900/20 transition-all">
-                                <span className="material-icons-round text-slate-400 dark:text-slate-500 text-lg pointer-events-none">event_busy</span>
-                                <input 
-                                    type="text" 
-                                    value={expirationDate}
-                                    onChange={e => setExpirationDate(e.target.value)}
-                                    placeholder={t('ph_expiration')}
-                                    className="w-full bg-transparent text-slate-800 dark:text-white font-bold text-sm outline-none placeholder:text-slate-300 dark:placeholder:text-slate-600"
-                                />
-                            </div>
-                        </div>
-
+                        {/* Temperature Field - Above Dates */}
                         <div className="flex items-center justify-between gap-2 bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-transparent rounded-2xl px-3 py-3 focus-within:ring-4 focus-within:ring-primary-100 dark:focus-within:ring-primary-900/20 transition-all group">
                             <div className="flex items-center gap-2 flex-1">
                                 <span className="material-icons-round text-slate-400 dark:text-slate-500 text-lg pointer-events-none">thermostat</span>
@@ -1124,6 +1093,29 @@ RESPONDE SOLO UN NÚMERO (ej: 18 o 12), sin explicación.`;
                                     <span className="material-icons-round text-base pointer-events-none">auto_awesome</span>
                                 </div>
                             )}
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="flex items-center gap-2 bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-transparent rounded-2xl px-3 py-3 focus-within:ring-4 focus-within:ring-primary-100 dark:focus-within:ring-primary-900/20 transition-all">
+                                <span className="material-icons-round text-slate-400 dark:text-slate-500 text-lg pointer-events-none">factory</span>
+                                <input 
+                                    type="text" 
+                                    value={productionDate}
+                                    onChange={e => setProductionDate(e.target.value)}
+                                    placeholder={t('ph_production')}
+                                    className="w-full bg-transparent text-slate-800 dark:text-white font-bold text-sm outline-none placeholder:text-slate-300 dark:placeholder:text-slate-600"
+                                />
+                            </div>
+                            <div className="flex items-center gap-2 bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-transparent rounded-2xl px-3 py-3 focus-within:ring-4 focus-within:ring-primary-100 dark:focus-within:ring-primary-900/20 transition-all">
+                                <span className="material-icons-round text-slate-400 dark:text-slate-500 text-lg pointer-events-none">event_busy</span>
+                                <input 
+                                    type="text" 
+                                    value={expirationDate}
+                                    onChange={e => setExpirationDate(e.target.value)}
+                                    placeholder={t('ph_expiration')}
+                                    className="w-full bg-transparent text-slate-800 dark:text-white font-bold text-sm outline-none placeholder:text-slate-300 dark:placeholder:text-slate-600"
+                                />
+                            </div>
                         </div>
                     </div>
                 </div>
