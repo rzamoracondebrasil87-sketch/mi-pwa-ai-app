@@ -1,39 +1,32 @@
 /**
- * Servicio para usar Google Cloud Vision (TEXT_DETECTION) vía REST
- * Espera una imagen en base64 (sin prefijo) y devuelve el texto detectado.
+ * Servicio para usar Google Cloud Vision vía Vercel API endpoint
+ * El endpoint maneja la autenticación con Service Account
+ * Espera una imagen en base64 y devuelve el texto detectado.
  */
 
-const VISION_API_KEY = import.meta.env.VITE_GOOGLE_VISION_KEY;
-const VISION_URL = 'https://vision.googleapis.com/v1/images:annotate';
+const VISION_ENDPOINT = '/api/vision';
 
 export async function analyzeImageWithVision(base64Image: string): Promise<string> {
-  if (!VISION_API_KEY) {
-    throw new Error('VITE_GOOGLE_VISION_KEY no está configurada. Configure la variable de entorno.');
+  try {
+    const response = await fetch(VISION_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imageBase64: base64Image }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(`Vision API error: ${error.message || response.statusText}`);
+    }
+
+    const data = await response.json();
+    return data.text || '';
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error('Vision service error:', error.message);
+      throw error;
+    }
+    throw new Error('Vision service error');
   }
-
-  const body = {
-    requests: [
-      {
-        image: { content: base64Image },
-        features: [{ type: 'TEXT_DETECTION', maxResults: 5 }]
-      }
-    ]
-  };
-
-  const res = await fetch(`${VISION_URL}?key=${VISION_API_KEY}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  });
-
-  if (!res.ok) {
-    let errText = res.statusText;
-    try { const j = await res.json(); errText = j.error?.message || errText; } catch {}
-    throw new Error(`Vision API error: ${errText}`);
-  }
-
-  const data = await res.json();
-  const annotation = data.responses?.[0];
-  const text = annotation?.fullTextAnnotation?.text || (annotation?.textAnnotations?.[0]?.description) || '';
-  return text;
 }
+
