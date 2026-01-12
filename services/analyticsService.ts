@@ -36,14 +36,13 @@ const saveStats = (stats: UserStats) => {
 };
 
 // Main tracking function
+import { logger } from './logger';
+
 export const trackEvent = (eventName: string, properties?: Record<string, any>) => {
     const timestamp = Date.now();
     
     // 1. Log to console (development visibility)
-    console.groupCollapsed(`📊 [Analytics] ${eventName}`);
-    console.log('Properties:', properties);
-    console.log('Timestamp:', new Date(timestamp).toLocaleTimeString());
-    console.groupEnd();
+    logger.debug(`📊 [Analytics] ${eventName}`, properties, new Date(timestamp).toLocaleTimeString());
 
     // 2. Persist event log (limit to last 50 events to save space)
     const currentEvents = getEvents();

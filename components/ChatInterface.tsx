@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createChatSession, callGeminiAPI } from '../services/geminiService';
 import { Message } from '../types';
 import { trackEvent } from '../services/analyticsService';
+import { logger } from '../services/logger';
 
 export const ChatInterface: React.FC = () => {
     const [messages, setMessages] = useState<Message[]>([
@@ -54,7 +55,7 @@ export const ChatInterface: React.FC = () => {
             
             trackEvent('message_response_received', { length: response.length });
         } catch (error) {
-            console.error("Error receiving response", error);
+            logger.error("Error receiving response", error);
             trackEvent('error_message_send', { error: String(error) });
             setMessages(prev => prev.map(msg => 
                 msg.id === modelMsgId ? { ...msg, text: "Lo siento, ha ocurrido un error en la conexión. Por favor verifica tu red e intenta nuevamente." } : msg

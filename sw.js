@@ -14,7 +14,9 @@ self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => {
-        console.log('Cache abierto');
+        if (self && self.console && process?.env?.NODE_ENV !== 'production') {
+          try { self.console.log('Cache abierto'); } catch (e) { /* ignore */ }
+        }
         return cache.addAll(urlsToCache);
       })
   );

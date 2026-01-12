@@ -1,6 +1,6 @@
 {
   "name": "mi-pwa-ai-app",
-  "private": false,
+  "private": true,
   "version": "1.0.0",
   "type": "module",
   "description": "PWA con inteligencia artificial usando Gemini para optimizar trabajo",
@@ -10,13 +10,16 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test:vision": "node scripts/test_vision_png_from_svg.cjs",
+    "test:vision:svg": "node scripts/test_vision_svg.cjs"
   },
   "dependencies": {
     "@vercel/node": "^3.2.3",
     "jsonwebtoken": "^9.0.0",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
+    "sharp": "^0.34.5",
     "tesseract.js": "5.0.4"
   },
   "devDependencies": {

@@ -1,5 +1,6 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import jwt from 'jsonwebtoken';
+import { logger } from '../services/logger';
 
 /**
  * Vercel API endpoint para Google Cloud Vision Text Detection
@@ -21,7 +22,7 @@ async function getAccessToken(credentials: any): Promise<string> {
       { algorithm: 'RS256' }
     );
 
-    console.log('JWT created, requesting access token...');
+    logger.debug('JWT created, requesting access token...');
 
     // Intercambiar JWT por access token
     const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
@@ -33,14 +34,14 @@ async function getAccessToken(credentials: any): Promise<string> {
     const tokenData: any = await tokenResponse.json();
     
     if (!tokenData.access_token) {
-      console.error('Token response:', tokenData);
-      throw new Error(`Token error: ${JSON.stringify(tokenData)}`);
+      logger.error('Token exchange failed');
+      throw new Error(`Token error`);
     }
 
-    console.log('Access token obtained successfully');
+    logger.debug('Access token obtained successfully');
     return tokenData.access_token;
   } catch (error) {
-    console.error('Token generation error:', error);
+    logger.error('Token generation error:', error?.message || error);
     throw error;
   }
 }
@@ -56,12 +57,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: 'imageBase64 required in body' });
     }
 
-    console.log('Vision API request received, image size:', imageBase64.length);
+      logger.debug('Vision API request received, image size:', imageBase64.length);
 
     // Obtener credenciales de Service Account
     const credentialsBase64 = process.env.GOOGLE_CLOUD_CREDENTIALS;
     if (!credentialsBase64) {
-      console.error('GOOGLE_CLOUD_CREDENTIALS not configured in environment');
+        logger.error('GOOGLE_CLOUD_CREDENTIALS not configured in environment');
       return res.status(500).json({ error: 'Vision credentials not configured' });
     }
 
@@ -69,13 +70,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const credentialsJson = Buffer.from(credentialsBase64, 'base64').toString('utf-8');
     const credentials = JSON.parse(credentialsJson);
 
-    console.log('Credentials decoded for:', credentials.client_email);
+      logger.debug('Credentials decoded');
 
     // Obtener access token
     const accessToken = await getAccessToken(credentials);
 
     // Llamar a Vision API
-    console.log('Calling Vision API...');
+      logger.debug('Calling Vision API...');
     const visionResponse = await fetch('https://vision.googleapis.com/v1/images:annotate', {
       method: 'POST',
       headers: {
@@ -92,11 +93,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }),
     });
 
-    console.log('Vision response status:', visionResponse.status);
+      logger.debug('Vision response status:', visionResponse.status);
 
     if (!visionResponse.ok) {
       const errorText = await visionResponse.text();
-      console.error('Vision API error response:', errorText);
+        logger.error('Vision API error response:', errorText);
       return res.status(visionResponse.status).json({
         error: 'Vision API error',
         message: errorText,
@@ -107,20 +108,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const annotation = data.responses?.[0];
     
     if (annotation?.error) {
-      console.error('Vision API returned error:', annotation.error);
+      logger.error('Vision API returned error:', annotation.error?.message || annotation.error);
       return res.status(400).json({
         error: 'Vision API error',
-        message: annotation.error.message,
+        message: annotation.error?.message || 'Unknown',
       });
     }
 
     const fullText = annotation?.fullTextAnnotation?.text || (annotation?.textAnnotations?.[0]?.description) || '';
 
-    console.log('Vision text extracted, length:', fullText.length);
+      logger.debug('Vision text extracted, length:', fullText.length);
     return res.status(200).json({ text: fullText });
     
   } catch (error: any) {
-    console.error('Vision API endpoint error:', error);
+    logger.error('Vision API endpoint error:', error?.message || error);
     return res.status(500).json({ 
       error: 'Vision API error',
       message: error?.message || 'Unknown error',

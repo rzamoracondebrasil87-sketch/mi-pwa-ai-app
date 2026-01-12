@@ -7,6 +7,7 @@ import { useTranslation } from '../services/i18n';
 import { useToast } from './Toast';
 import { callGeminiAPI, analyzeImageWithGemini } from '../services/geminiService';
 import { analyzeImageWithVision } from '../services/visionService';
+import { logger } from '../services/logger';
 
 // Use stable model for reliable production vision
 const TOLERANCE_KG = 0.2;
@@ -210,11 +211,11 @@ export const WeighingForm: React.FC = () => {
             const { data: { text } } = await worker.recognize(base64Image);
             await worker.terminate();
 
-            console.log("Offline OCR Text:", text);
+            logger.debug("Offline OCR Text:", text);
             parseOCRText(text);
 
         } catch (error) {
-            console.error("Offline OCR Error:", error);
+            logger.error("Offline OCR Error:", error);
             setAiAlert("Error en lectura local.");
         }
     };
@@ -433,7 +434,7 @@ export const WeighingForm: React.FC = () => {
         let foundData = false;
         let foundExpiration = '';
 
-        console.log("OCR Interpretation Result:", ocrData);
+        logger.debug("OCR Interpretation Result:", ocrData);
 
         // ==================== APPLY EXTRACTED DATA ====================
 
@@ -494,10 +495,10 @@ export const WeighingForm: React.FC = () => {
         
         // 1. Try Google Vision API first (most reliable for OCR)
         try {
-            console.log('Attempting Google Vision API...');
+            logger.debug('Attempting Google Vision API...');
             const visionText = await analyzeImageWithVision(base64);
             if (visionText) {
-                console.log('Vision API Text:', visionText);
+                logger.debug('Vision API Text:', visionText);
                 parseOCRText(visionText);
                 setIsReadingImage(false);
                 return;
@@ -508,7 +509,7 @@ export const WeighingForm: React.FC = () => {
         
         // 2. Try Gemini (with rotation) if Vision didn't work
         try {
-            console.log('Attempting Gemini API...');
+            logger.debug('Attempting Gemini API...');
             const prompt = `
             Analyze this image of a product label.
             
@@ -533,7 +534,7 @@ export const WeighingForm: React.FC = () => {
 
             const text = await analyzeImageWithGemini(base64, prompt);
             if (text) {
-                console.log("Gemini Raw Response:", text);
+                logger.debug("Gemini Raw Response:", text);
                 let jsonString = text.replace(/```json/g, '').replace(/```/g, '').trim();
                 const firstBrace = jsonString.indexOf('{');
                 const lastBrace = jsonString.lastIndexOf('}');
@@ -595,10 +596,10 @@ export const WeighingForm: React.FC = () => {
         
         // 3. Fallback to Offline OCR
         try {
-            console.log('Attempting Offline OCR (fallback)...');
+            logger.debug('Attempting Offline OCR (fallback)...');
             await performOfflineOCR(base64Image);
         } catch (ocrError) {
-            console.error('Offline OCR error:', ocrError);
+            logger.error('Offline OCR error:', ocrError);
             setAiAlert("Error en lectura local. Ingresa datos manualmente.");
         } finally {
             setIsReadingImage(false);
