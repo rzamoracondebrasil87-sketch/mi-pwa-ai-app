@@ -80,11 +80,13 @@ export const WeighingForm: React.FC = () => {
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [isReadingImage, setIsReadingImage] = useState(false);
     const [aiAlert, setAiAlert] = useState<string | null>(null);
+    const [extractedPhotoInfo, setExtractedPhotoInfo] = useState<string | null>(null); // Information extracted from photo
     
     // Smart Tips Carousel
     const [smartTips, setSmartTips] = useState<Array<{type: string; title: string; content: string}>>([]);
     const [currentTipIndex, setCurrentTipIndex] = useState(0);
     const [autoRotateTimer, setAutoRotateTimer] = useState<NodeJS.Timeout | null>(null);
+    const [touchStartX, setTouchStartX] = useState<number>(0); // Swipe gesture support
 
     // Track active sections for styling
     const [activeSection, setActiveSection] = useState<'identity' | 'weights' | 'tara' | 'evidence' | null>(null);
@@ -185,7 +187,16 @@ export const WeighingForm: React.FC = () => {
     const generateSmartTips = () => {
         const tips: Array<{type: string; title: string; content: string}> = [];
         
-        // 1. CRITICAL ALERTS (Highest Priority)
+        // 0. AI ANALYSIS ALERT (Highest Priority - from photo reading)
+        if (aiAlert) {
+            tips.push({
+                type: 'ai_analysis',
+                title: '🤖 Análisis IA',
+                content: aiAlert
+            });
+        }
+        
+        // 1. CRITICAL EXPIRATION ALERTS
         if (expirationDate) {
             const productType = getProductType(supplier, product) || temperature;
             const expAlert = checkExpirationRisk(expirationDate, productType);
@@ -209,7 +220,7 @@ export const WeighingForm: React.FC = () => {
             });
         }
         
-        // 2. LOGISTICS SUMMARY (When weights are entered)
+        // 2. LOGISTICS SUMMARY
         if (batch && noteWeight && grossWeight) {
             tips.push({
                 type: 'logistics',
@@ -230,7 +241,7 @@ export const WeighingForm: React.FC = () => {
             });
         }
         
-        // 3. STORAGE ADVICE (Based on product type)
+        // 3. STORAGE ADVICE
         if (temperature || product) {
             const prodType = temperature || getProductType(supplier, product);
             if (prodType?.toLowerCase().includes('congel')) {
@@ -254,7 +265,7 @@ export const WeighingForm: React.FC = () => {
             }
         }
         
-        // 4. DEFAULT/ASSISTANT MESSAGE (Fallback)
+        // 4. ASSISTANT MESSAGE (Fallback)
         if (tips.length === 0) {
             tips.push({
                 type: 'assistant',
@@ -270,7 +281,7 @@ export const WeighingForm: React.FC = () => {
     // Auto-update Smart Tips when form changes
     useEffect(() => {
         generateSmartTips();
-    }, [supplier, product, batch, expirationDate, productionDate, temperature, noteWeight, grossWeight, aiAlert, language]);
+    }, [supplier, product, batch, expirationDate, productionDate, temperature, noteWeight, grossWeight, aiAlert, extractedPhotoInfo, language]);
     
     // Auto-rotate Smart Tips (slower during analysis)
     useEffect(() => {
@@ -881,7 +892,17 @@ Analiza con cuidado, no rápido.`;
                         setShowBoxes(true);
                     }
 
-                    // Build AI alert message
+                    // Build extracted photo info (simplified for history)
+                    const extractedInfo = [];
+                    if (data.produto) extractedInfo.push(`${t('ph_product')}: ${data.produto}`);
+                    if (data.fornecedor) extractedInfo.push(`${t('ph_supplier')}: ${data.fornecedor}`);
+                    if (data.lote && data.lote !== 'indeterminado') extractedInfo.push(`${t('ph_batch')}: ${data.lote}`);
+                    if (data.data_fabricacao && data.data_fabricacao !== 'indeterminado') extractedInfo.push(`${t('ph_production')}: ${data.data_fabricacao}`);
+                    if (data.data_validade && data.data_validade !== 'indeterminado') extractedInfo.push(`${t('ph_expiration')}: ${data.data_validade}`);
+                    
+                    setExtractedPhotoInfo(extractedInfo.join(' | ') || null);
+
+                    // Build AI alert message (for carousel now)
                     const parts = [];
                     if (data.produto) parts.push(`${t('ph_product')} ${data.produto}`);
                     if (data.fornecedor) parts.push(`${t('ph_supplier')} ${data.fornecedor}`);
@@ -1035,7 +1056,8 @@ RESPONDE SOLO UN NÚMERO ENTRE 0 Y 25 (ej: 15 o 4), sin explicación, sin símbo
             taraEmbalaje: { qty: Number(boxQtyEmbalaje), unitTara: boxTaraEmbalajeKg },
             grossWeightDetails: grossWeightParsed.details,
             status: Math.abs(difference) > TOLERANCE_KG ? 'error' : 'verified',
-            aiAnalysis: aiAlert || undefined,
+            extractedPhotoInfo: extractedPhotoInfo || undefined, // Photo reading info
+            aiAnalysis: aiAlert || undefined, // Full AI analysis moved to carousel
             evidence: evidence || undefined
         });
 
@@ -1173,12 +1195,16 @@ RESPONDE SOLO UN NÚMERO (ej: 18 o 12), sin explicación.`;
                                  <p className="text-xs font-medium opacity-95 leading-snug text-white">
                                     {isReadingImage ? (
                                         <span className="animate-pulse">{t('lbl_analyzing_img')}</span>
+                                    ) : extractedPhotoInfo ? (
+                                        // Show extracted info from photo (e.g., supplier, product, dates detected)
+                                        extractedPhotoInfo
                                     ) : (
-                                        aiAlert || assistantMessage
+                                        // Show form state guidance
+                                        assistantMessage
                                     )}
                                  </p>
                              </div>
-                             {historyContext && !aiAlert && !isReadingImage && (
+                             {historyContext && !isReadingImage && (
                                  <p className="text-[9px] mt-1.5 opacity-75 flex items-center gap-1 bg-black/20 px-2.5 py-0.5 rounded-full w-fit text-white backdrop-blur-sm">
                                     <span className="material-icons-round text-[10px] pointer-events-none">history</span>
                                     {historyContext}
@@ -1201,36 +1227,47 @@ RESPONDE SOLO UN NÚMERO (ej: 18 o 12), sin explicación.`;
                             </div>
                         </div>
                     </div>
-
-                    {!aiAlert && Math.abs(difference) > TOLERANCE_KG && (
-                         <button 
-                            onClick={analyzeWithAI} 
-                            disabled={isAnalyzing} 
-                            className="mt-2.5 w-full py-2 bg-white hover:bg-slate-50 text-slate-800 rounded-lg text-[10px] font-bold shadow-lg transition-all flex items-center justify-center gap-1.5"
-                        >
-                             {isAnalyzing ? <span className="animate-spin material-icons-round text-xs pointer-events-none">refresh</span> : <span className="material-icons-round text-xs pointer-events-none">analytics</span>}
-                             {isAnalyzing ? t('btn_analyzing') : t('btn_consult_ai')}
-                         </button>
-                     )}
                 </div>
             </div>
 
-            {/* ✨ Smart Tips Carousel */}
+            {/* ✨ Smart Tips Carousel with Swipe Support */}
             {smartTips.length > 0 && (
-                <div className={`rounded-[2rem] border transition-all duration-300 overflow-hidden shadow-md ${
-                    smartTips[currentTipIndex]?.type === 'alert' 
-                        ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800' 
-                        : smartTips[currentTipIndex]?.type === 'logistics'
-                        ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
-                        : smartTips[currentTipIndex]?.type === 'storage'
-                        ? 'bg-cyan-50 dark:bg-cyan-900/20 border-cyan-200 dark:border-cyan-800'
-                        : 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800'
-                }`}>
+                <div 
+                    className={`rounded-[2rem] border transition-all duration-300 overflow-hidden shadow-md select-none cursor-grab active:cursor-grabbing ${
+                        smartTips[currentTipIndex]?.type === 'ai_analysis' 
+                            ? 'bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-800' 
+                            : smartTips[currentTipIndex]?.type === 'alert' 
+                            ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800' 
+                            : smartTips[currentTipIndex]?.type === 'logistics'
+                            ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
+                            : smartTips[currentTipIndex]?.type === 'storage'
+                            ? 'bg-cyan-50 dark:bg-cyan-900/20 border-cyan-200 dark:border-cyan-800'
+                            : 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800'
+                    }`}
+                    onTouchStart={(e) => setTouchStartX(e.touches[0].clientX)}
+                    onTouchEnd={(e) => {
+                        const touchEndX = e.changedTouches[0].clientX;
+                        const diff = touchStartX - touchEndX;
+                        
+                        // Swipe left (> 50px) = next tip
+                        if (diff > 50) {
+                            setCurrentTipIndex(prev => (prev + 1) % smartTips.length);
+                            if (autoRotateTimer) clearTimeout(autoRotateTimer);
+                        }
+                        // Swipe right (< -50px) = previous tip
+                        else if (diff < -50) {
+                            setCurrentTipIndex(prev => (prev - 1 + smartTips.length) % smartTips.length);
+                            if (autoRotateTimer) clearTimeout(autoRotateTimer);
+                        }
+                    }}
+                >
                     <div className="p-4">
                         {/* Tip Header */}
                         <div className="flex items-center justify-between mb-2">
                             <h3 className={`text-sm font-bold ${
-                                smartTips[currentTipIndex]?.type === 'alert' 
+                                smartTips[currentTipIndex]?.type === 'ai_analysis' 
+                                    ? 'text-purple-700 dark:text-purple-200' 
+                                    : smartTips[currentTipIndex]?.type === 'alert' 
                                     ? 'text-red-700 dark:text-red-200' 
                                     : smartTips[currentTipIndex]?.type === 'logistics'
                                     ? 'text-blue-700 dark:text-blue-200'
@@ -1249,7 +1286,9 @@ RESPONDE SOLO UN NÚMERO (ej: 18 o 12), sin explicación.`;
                         
                         {/* Tip Content */}
                         <p className={`text-sm leading-relaxed ${
-                            smartTips[currentTipIndex]?.type === 'alert' 
+                            smartTips[currentTipIndex]?.type === 'ai_analysis' 
+                                ? 'text-purple-800 dark:text-purple-100' 
+                                : smartTips[currentTipIndex]?.type === 'alert' 
                                 ? 'text-red-800 dark:text-red-100' 
                                 : smartTips[currentTipIndex]?.type === 'logistics'
                                 ? 'text-blue-800 dark:text-blue-100'
@@ -1260,27 +1299,32 @@ RESPONDE SOLO UN NÚMERO (ej: 18 o 12), sin explicación.`;
                             {smartTips[currentTipIndex]?.content}
                         </p>
                         
-                        {/* Navigation Dots */}
-                        {smartTips.length > 1 && (
-                            <div className="flex gap-2 mt-3 justify-center">
-                                {smartTips.map((_, idx) => (
-                                    <button
-                                        key={idx}
-                                        onClick={() => {
-                                            setCurrentTipIndex(idx);
-                                            // Reset auto-rotate timer
-                                            if (autoRotateTimer) clearTimeout(autoRotateTimer);
-                                        }}
-                                        className={`h-2 rounded-full transition-all ${
-                                            idx === currentTipIndex 
-                                                ? 'w-6 bg-current opacity-75' 
-                                                : 'w-2 opacity-30 hover:opacity-50'
-                                        }`}
-                                        aria-label={`Tip ${idx + 1}`}
-                                    />
-                                ))}
-                            </div>
-                        )}
+                        {/* Navigation Dots & Gesture Hint */}
+                        <div className="flex flex-col gap-2 mt-3 items-center">
+                            {smartTips.length > 1 && (
+                                <>
+                                    <div className="flex gap-2 justify-center">
+                                        {smartTips.map((_, idx) => (
+                                            <button
+                                                key={idx}
+                                                onClick={() => {
+                                                    setCurrentTipIndex(idx);
+                                                    // Reset auto-rotate timer
+                                                    if (autoRotateTimer) clearTimeout(autoRotateTimer);
+                                                }}
+                                                className={`h-2 rounded-full transition-all ${
+                                                    idx === currentTipIndex 
+                                                        ? 'w-6 bg-current opacity-75' 
+                                                        : 'w-2 opacity-30 hover:opacity-50'
+                                                }`}
+                                                aria-label={`Tip ${idx + 1}`}
+                                            />
+                                        ))}
+                                    </div>
+                                    <span className="text-[9px] opacity-50 font-medium">← Desliza para navegar →</span>
+                                </>
+                            )}
+                        </div>
                     </div>
                 </div>
             )}

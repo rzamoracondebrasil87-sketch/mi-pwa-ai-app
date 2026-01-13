@@ -21,6 +21,7 @@ export interface WeighingRecord {
     temperature?: number; // Temperatura en °C
     temperatureSuggestion?: number; // IA sugiere temperatura óptima
     status: 'pending' | 'verified' | 'error';
+    extractedPhotoInfo?: string; // Basic info extracted from photo (e.g., "Lote: XYZ, Fab: DD/MM/YY")
     aiAnalysis?: string;
     evidence?: string; // Base64 string of the image
     batch?: string; // Lote do produto
