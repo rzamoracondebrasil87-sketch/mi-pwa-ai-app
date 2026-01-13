@@ -113,6 +113,7 @@ const translations = {
         
         // Smart Tips Carousel
         tip_title_alert: '🚨 Alerta Crítico',
+        tip_title_ai_analysis: '🤖 Análise IA',
         tip_title_logistics: '📊 Resumo Logístico',
         tip_title_storage: '🧊 Conselho de Armazenamento',
         tip_title_assistant: '💡 Dica da IA',
@@ -229,6 +230,7 @@ const translations = {
         
         // Smart Tips Carousel
         tip_title_alert: '🚨 Alerta Crítico',
+        tip_title_ai_analysis: '🤖 Análisis IA',
         tip_title_logistics: '📊 Resumen Logístico',
         tip_title_storage: '🧊 Consejo de Almacenamiento',
         tip_title_assistant: '💡 Tip de la IA',
@@ -344,6 +346,7 @@ const translations = {
         
         // Smart Tips Carousel
         tip_title_alert: '🚨 Critical Alert',
+        tip_title_ai_analysis: '🤖 AI Analysis',
         tip_title_logistics: '📊 Logistics Summary',
         tip_title_storage: '🧊 Storage Advice',
         tip_title_assistant: '💡 AI Tip',

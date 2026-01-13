@@ -191,7 +191,7 @@ export const WeighingForm: React.FC = () => {
         if (aiAlert) {
             tips.push({
                 type: 'ai_analysis',
-                title: '🤖 Análisis IA',
+                title: t('tip_title_ai_analysis'),
                 content: aiAlert
             });
         }
