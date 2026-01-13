@@ -215,11 +215,150 @@ html.dark ::-webkit-scrollbar-thumb:hover {
 /* App-specific overrides */
 .container { max-width: 960px; margin: 0 auto; padding: 16px; }
 
+/* 🎨 ADVANCED ANIMATIONS - New */
+
+/* Bounce Animations */
+@keyframes bounceIn {
+  0% { opacity: 0; transform: scale(0.9) translateY(20px); }
+  50% { opacity: 1; }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes bounceInLeft {
+  0% { opacity: 0; transform: translateX(-30px); }
+  100% { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes bounceInRight {
+  0% { opacity: 0; transform: translateX(30px); }
+  100% { opacity: 1; transform: translateX(0); }
+}
+
+/* Flip Animations */
+@keyframes flipIn {
+  0% { opacity: 0; transform: perspective(400px) rotateY(90deg); }
+  100% { opacity: 1; transform: perspective(400px) rotateY(0deg); }
+}
+
+/* Slide Down */
+@keyframes slideDown {
+  0% { opacity: 0; transform: translateY(-20px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+/* Fade In Right */
+@keyframes fadeInRight {
+  0% { opacity: 0; transform: translateX(-20px); }
+  100% { opacity: 1; transform: translateX(0); }
+}
+
+/* Rotate In */
+@keyframes rotateIn {
+  0% { opacity: 0; transform: rotate(-10deg) scale(0.95); }
+  100% { opacity: 1; transform: rotate(0deg) scale(1); }
+}
+
+/* Glow Pulse */
+@keyframes glowPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); }
+  50% { box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); }
+}
+
+/* Gentle Wobble */
+@keyframes wobble {
+  0%, 100% { transform: translateX(0); }
+  15% { transform: translateX(-5px); }
+  30% { transform: translateX(5px); }
+  45% { transform: translateX(-5px); }
+  60% { transform: translateX(3px); }
+  75% { transform: translateX(-3px); }
+  85% { transform: translateX(2px); }
+}
+
+/* Attention Pulse */
+@keyframes attentionPulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+
+/* Color Shift */
+@keyframes colorShift {
+  0% { color: #3b82f6; }
+  50% { color: #06b6d4; }
+  100% { color: #3b82f6; }
+}
+
+/* Utility Classes */
+.animate-bounceIn { animation: bounceIn 0.5s ease-out; }
+.animate-bounceInLeft { animation: bounceInLeft 0.4s ease-out; }
+.animate-bounceInRight { animation: bounceInRight 0.4s ease-out; }
+.animate-flipIn { animation: flipIn 0.6s ease-in-out; }
+.animate-slideDown { animation: slideDown 0.3s ease-out; }
+.animate-fadeInRight { animation: fadeInRight 0.4s ease-out; }
+.animate-rotateIn { animation: rotateIn 0.5s ease-out; }
+.animate-glowPulse { animation: glowPulse 2s infinite; }
+.animate-wobble { animation: wobble 0.6s ease-in-out; }
+.animate-attentionPulse { animation: attentionPulse 0.8s ease-in-out infinite; }
+.animate-colorShift { animation: colorShift 3s ease-in-out infinite; }
+
+/* Staggered animations */
+.animate-stagger-1 { animation-delay: 0s; }
+.animate-stagger-2 { animation-delay: 0.1s; }
+.animate-stagger-3 { animation-delay: 0.2s; }
+.animate-stagger-4 { animation-delay: 0.3s; }
+.animate-stagger-5 { animation-delay: 0.4s; }
+
+/* Transform Origin Utilities */
+.origin-top-left { transform-origin: top left; }
+.origin-top-center { transform-origin: top center; }
+.origin-top-right { transform-origin: top right; }
+.origin-center-left { transform-origin: center left; }
+.origin-center { transform-origin: center; }
+.origin-center-right { transform-origin: center right; }
+.origin-bottom-left { transform-origin: bottom left; }
+.origin-bottom-center { transform-origin: bottom center; }
+.origin-bottom-right { transform-origin: bottom right; }
+
+/* Transition Utilities */
+.transition-all-fast { @apply transition-all duration-150; }
+.transition-all-slow { @apply transition-all duration-500; }
+.transition-transform-fast { @apply transition-transform duration-150; }
+.transition-colors-fast { @apply transition-colors duration-150; }
+
+/* Glass Morphism Effects */
+.glass-effect {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.glass-effect-dark {
+  background: rgba(0, 0, 0, 0.1);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
 /* Responsive Utilities */
 @media (max-width: 640px) {
   .sm-hidden { @apply hidden; }
+  .max-height-mobile { max-height: calc(100vh - 200px); }
 }
 
 @media (min-width: 641px) {
   .sm-block { @apply block; }
+}
+
+/* Print Styles */
+@media print {
+  .no-print { @apply hidden; }
+  .print-only { @apply block; }
+}
+
+/* High Contrast Mode Support */
+@media (prefers-contrast: more) {
+  body {
+    --tw-ring-opacity: 1;
+  }
 }
