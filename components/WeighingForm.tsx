@@ -6,8 +6,10 @@ import { trackEvent } from '../services/analyticsService';
 import { useTranslation } from '../services/i18n';
 import { useToast } from './Toast';
 import { callGeminiAPI, analyzeImageWithGemini } from '../services/geminiService';
+import { storeImageReading, predictFromReadings } from '../services/storageService';
 import { analyzeImageWithVision } from '../services/visionService';
 import { logger } from '../services/logger';
+import { ImageReading } from '../types';
 
 // Use stable model for reliable production vision
 const TOLERANCE_KG = 0.2;
@@ -691,6 +693,33 @@ Analiza con cuidado, no rápido.`;
                 try {
                     const data = JSON.parse(jsonString);
                     
+                    // ==================== ALMACENAR LECTURA PARA APRENDIZAJE ====================
+                    const imageReading: ImageReading = {
+                        id: `reading_${Date.now()}`,
+                        timestamp: Date.now(),
+                        supplier: data.fornecedor || supplier || 'desconocido',
+                        product: data.produto || product || 'desconocido',
+                        imageBase64: base64,
+                        extractedData: {
+                            product: data.produto,
+                            productionDate: data.data_fabricacao !== 'indeterminado' ? data.data_fabricacao : undefined,
+                            expirationDate: data.data_validade !== 'indeterminado' ? data.data_validade : undefined,
+                            batch: data.lote !== 'indeterminado' ? data.lote : undefined,
+                            netWeight: data.peso_liquido_kg,
+                            grossWeight: data.peso_bruto_kg,
+                            tareWeight: data.peso_bruto_kg && data.peso_liquido_kg ? data.peso_bruto_kg - data.peso_liquido_kg : undefined,
+                            temperature: undefined, // Será completado abajo
+                            barcode: undefined,
+                            type: data.tipo,
+                            sif: data.sif
+                        },
+                        aiPrediction: undefined,
+                        userVerified: false,
+                        confidence: ['alta', 'media', 'baja'].includes(data.confianza_leitura) 
+                            ? (data.confianza_leitura === 'alta' ? 90 : data.confianza_leitura === 'media' ? 60 : 40)
+                            : 60
+                    };
+                    
                     // Map new JSON structure to form fields
                     if (data.fornecedor && !supplier) setSupplier(data.fornecedor);
                     if (data.produto && !product) setProduct(data.produto);
@@ -739,6 +768,7 @@ Analiza con cuidado, no rápido.`;
                                 const tempMatch = data.temperatura_rotulo.match(/-?\d+/);
                                 if (tempMatch) {
                                     const labelTemp = parseInt(tempMatch[0]);
+                                    imageReading.extractedData.temperature = labelTemp;
                                     setTemperatureSuggestion(labelTemp);
                                     setTemperature(labelTemp.toString());
                                 }
@@ -760,6 +790,8 @@ RESPONDE SOLO UN NÚMERO ENTRE 0 Y 25 (ej: 15 o 4), sin explicación, sin símbo
                                 if (tempResult) {
                                     const tempValue = parseInt(tempResult?.trim() || '0');
                                     if (tempValue > -1 && tempValue < 26) {
+                                        imageReading.extractedData.temperature = tempValue;
+                                        imageReading.aiPrediction = { temperature: tempValue, confidence: 75 };
                                         setTemperatureSuggestion(tempValue);
                                         setTemperature(tempValue.toString());
                                         logger.debug('Temperature predicted from image:', tempValue);
@@ -768,6 +800,40 @@ RESPONDE SOLO UN NÚMERO ENTRE 0 Y 25 (ej: 15 o 4), sin explicación, sin símbo
                             }
                         } catch (tempError) {
                             logger.debug('Temperature prediction failed:', tempError);
+                        }
+                    }
+
+                    // ==================== GUARDAR LECTURA Y HACER PREDICCIONES ====================
+                    storeImageReading(imageReading);
+                    
+                    // Hacer predicciones inteligentes para completar campos vacíos
+                    if (data.fornecedor && data.produto) {
+                        const predictions = predictFromReadings(data.fornecedor, data.produto);
+                        
+                        if (predictions.suggestedNetWeight && !netWeight) {
+                            // No auto-llenar peso neto (usuario debe medir)
+                        }
+                        if (predictions.suggestedTareWeight && !boxTara) {
+                            setBoxTara(Math.round(predictions.suggestedTareWeight * 1000).toString());
+                        }
+                        if (predictions.suggestedTemperature && !temperature) {
+                            setTemperatureSuggestion(predictions.suggestedTemperature);
+                            setTemperature(predictions.suggestedTemperature.toString());
+                        }
+                        if (predictions.suggestedExpirationDays && !expirationDate && imageReading.extractedData.productionDate) {
+                            // Calcular fecha de vencimiento basada en días típicos
+                            try {
+                                const prod = new Date(imageReading.extractedData.productionDate);
+                                const exp = new Date(prod.getTime() + predictions.suggestedExpirationDays * 24 * 60 * 60 * 1000);
+                                const expStr = `${String(exp.getDate()).padStart(2, '0')}/${String(exp.getMonth() + 1).padStart(2, '0')}/${exp.getFullYear()}`;
+                                setExpirationDate(expStr);
+                            } catch {
+                                // Ignore date calculation errors
+                            }
+                        }
+                        
+                        if (predictions.totalLearnings) {
+                            setAiAlert(`🧠 Basado en ${predictions.totalLearnings} lecturas previas de ${data.fornecedor} → ${data.produto}`);
                         }
                     }
 

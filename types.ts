@@ -29,10 +29,52 @@ export interface WeighingRecord {
     grossWeightDetails?: number[]; // Array of individual weights if entered as comma-separated
 }
 
+export interface ImageReading {
+    id: string;
+    timestamp: number;
+    supplier: string;
+    product: string;
+    imageBase64: string; // Original image
+    extractedData: {
+        product?: string;
+        productionDate?: string;
+        expirationDate?: string;
+        batch?: string;
+        netWeight?: number;
+        grossWeight?: number;
+        tareWeight?: number;
+        temperature?: number;
+        barcode?: string;
+        type?: string;
+        sif?: string;
+    };
+    aiPrediction?: {
+        temperature?: number;
+        confidence?: number;
+    };
+    userVerified?: boolean;
+    confidence: number; // 0-100 OCR confidence
+}
+
+export interface LearningPattern {
+    supplier: string;
+    product: string;
+    totalReadings: number;
+    averageNetWeight: number;
+    averageTareWeight: number;
+    averageTemperature: number;
+    averageGrossWeight: number;
+    commonExpirationDays: number; // Dias típicos desde producción a vencimiento
+    lastReading: number; // timestamp
+    readings: ImageReading[]; // Last 50 readings for this pattern
+}
+
 export interface KnowledgeBase {
     suppliers: string[];
     products: string[];
-    // Map supplier+product to typical tara/boxes
+    imageReadings: ImageReading[]; // All OCR readings for learning
+    learningPatterns: Record<string, LearningPattern>; // Key: "supplier::product"
+    // Legacy patterns (kept for backward compatibility)
     patterns: Record<string, {
         typicalTaraBox: number;
         lastUsedProduct: string;
