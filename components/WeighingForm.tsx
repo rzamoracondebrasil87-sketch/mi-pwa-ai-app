@@ -6,6 +6,7 @@ import { trackEvent } from '../services/analyticsService';
 import { useTranslation } from '../services/i18n';
 import { useToast } from './Toast';
 import { callGeminiAPI, analyzeImageWithGemini } from '../services/geminiService';
+import { readProductLabel } from '../services/labelService';
 import { storeImageReading, predictFromReadings } from '../services/storageService';
 import { analyzeImageWithVision } from '../services/visionService';
 import { logger } from '../services/logger';

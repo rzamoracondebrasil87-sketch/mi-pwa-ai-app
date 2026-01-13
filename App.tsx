@@ -5,6 +5,8 @@ import { WeighingForm } from './components/WeighingForm';
 import { GlobalWeighingChat } from './components/GlobalWeighingChat';
 import { useWakeLock } from './hooks/useWakeLock';
 import { getRecords, deleteRecord, clearAllRecords, getUserProfile, saveUserProfile, getTheme, saveTheme } from './services/storageService';
+import { downloadCSV, shareToWhatsApp } from './services/exportService';
+import { trackEvent } from './services/analyticsService';
 import { WeighingRecord, Language, UserProfile } from './types';
 import { LanguageProvider, useTranslation } from './services/i18n';
 import { ToastProvider, useToast } from './components/Toast';
@@ -129,43 +131,15 @@ const MainLayout: React.FC = () => {
             return;
         }
 
-        // Headers
-        const headers = ["Data", "Hora", "Fornecedor", "Produto", "Lote", "Validade", "Peso Nota (kg)", "Peso Bruto (kg)", "Tara (kg)", "Peso Liquido (kg)", "Diferenca (kg)", "Status", "Obs IA"];
-        
-        // Rows
-        const rows = filteredRecords.map(r => {
-            const date = new Date(r.timestamp);
-            const diff = r.netWeight - r.noteWeight;
-            
-            // Handle commas in content by quoting strings
-            const escape = (str?: string) => `"${(str || '').replace(/"/g, '""')}"`;
-            
-            return [
-                date.toLocaleDateString(),
-                date.toLocaleTimeString(),
-                escape(r.supplier),
-                escape(r.product),
-                escape(r.batch),
-                escape(r.expirationDate),
-                r.noteWeight.toFixed(2),
-                r.grossWeight.toFixed(2),
-                r.taraTotal.toFixed(3),
-                r.netWeight.toFixed(2),
-                diff.toFixed(2),
-                r.status,
-                escape(r.aiAnalysis)
-            ].join(",");
-        });
-
-        const csvContent = "\uFEFF" + [headers.join(","), ...rows].join("\n"); // Add BOM for Excel
-        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.setAttribute("href", url);
-        link.setAttribute("download", `conferente_export_${new Date().toISOString().slice(0,10)}.csv`);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        try {
+            const filename = `conferente_export_${new Date().toISOString().slice(0, 10)}.csv`;
+            downloadCSV(filteredRecords, filename);
+            showToast(`✅ Exportado: ${filename}`, "success");
+            trackEvent('export_csv', { recordCount: filteredRecords.length });
+        } catch (error) {
+            showToast("Error al exportar CSV", "error");
+            console.error("Export error:", error);
+        }
     };
 
     const handleClearHistory = (e: React.MouseEvent) => {
@@ -649,12 +623,24 @@ ${record.evidence ? '📸 [FOTO]' : ''}`;
                                                         </div>
                                                     </div>
                                                     
-                                                    {/* Temperature & Difference */}
+                                                    {/* Temperature & Expiration Badges */}
                                                     <div className="flex flex-col items-end gap-1">
+                                                        {record.temperatureSuggestion && (
+                                                            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 dark:bg-blue-500/20 rounded-2xl">
+                                                                <span>❄️</span>
+                                                                <span className="font-bold text-sm text-blue-600 dark:text-blue-400">{record.temperatureSuggestion}°C</span>
+                                                            </div>
+                                                        )}
                                                         {record.temperature && (
-                                                            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 dark:bg-blue-500/20 rounded-xl">
-                                                                <span className="material-icons-round text-blue-600 dark:text-blue-400 text-sm pointer-events-none">thermostat</span>
-                                                                <span className="font-bold text-sm text-blue-600 dark:text-blue-400">{record.temperature}°</span>
+                                                            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-50 dark:bg-cyan-500/20 rounded-2xl">
+                                                                <span>🌡️</span>
+                                                                <span className="font-bold text-sm text-cyan-600 dark:text-cyan-400">{record.temperature}°C</span>
+                                                            </div>
+                                                        )}
+                                                        {record.expirationDate && (
+                                                            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 dark:bg-amber-500/20 rounded-2xl">
+                                                                <span>📅</span>
+                                                                <span className="font-bold text-sm text-amber-600 dark:text-amber-400">{record.expirationDate}</span>
                                                             </div>
                                                         )}
                                                         <div className={`px-4 py-2 rounded-2xl flex items-center justify-center ${diffColor}`}>

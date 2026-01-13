@@ -1,12 +1,28 @@
 {
-  "name": "Conferente Pro",
+  "name": "Conferente Pro - Control de Logística",
   "short_name": "Conferente",
-  "description": "Control de pesaje inteligente y conferencias",
+  "description": "PWA avanzada para control de pesaje, logística y análisis inteligente con IA",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#eff6ff",
-  "theme_color": "#2563eb",
-  "orientation": "portrait",
+  "background_color": "#fafafa",
+  "theme_color": "#27272a",
+  "orientation": "portrait-primary",
+  "scope": "/",
+  "categories": ["logistics", "productivity"],
+  "screenshots": [
+    {
+      "src": "https://via.placeholder.com/540x720/fafafa/27272a?text=Conferente+Pro",
+      "sizes": "540x720",
+      "type": "image/png",
+      "form_factor": "narrow"
+    },
+    {
+      "src": "https://via.placeholder.com/1280x720/fafafa/27272a?text=Conferente+Pro",
+      "sizes": "1280x720",
+      "type": "image/png",
+      "form_factor": "wide"
+    }
+  ],
   "icons": [
     {
       "src": "https://www.pwabuilder.com/assets/icons/icon_192.png",
@@ -18,7 +34,51 @@
       "src": "https://www.pwabuilder.com/assets/icons/icon_512.png",
       "sizes": "512x512",
       "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "https://www.pwabuilder.com/assets/icons/icon_192_maskable.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "https://www.pwabuilder.com/assets/icons/icon_512_maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
       "purpose": "maskable"
     }
-  ]
+  ],
+  "shortcuts": [
+    {
+      "name": "Nuevo Pesaje",
+      "short_name": "Pesaje",
+      "description": "Inicia un nuevo pesaje",
+      "url": "/?tab=weigh",
+      "icons": [{ "src": "https://www.pwabuilder.com/assets/icons/icon_96.png", "sizes": "96x96", "type": "image/png" }]
+    },
+    {
+      "name": "Historial",
+      "short_name": "Historial",
+      "description": "Ver historial de pesajes",
+      "url": "/?tab=history",
+      "icons": [{ "src": "https://www.pwabuilder.com/assets/icons/icon_96.png", "sizes": "96x96", "type": "image/png" }]
+    }
+  ],
+  "share_target": {
+    "action": "/share",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url",
+      "files": [
+        {
+          "name": "image",
+          "accept": ["image/png", "image/jpeg"]
+        }
+      ]
+    }
+  }
 }
