@@ -4,20 +4,20 @@
   "description": "PWA avanzada para control de pesaje, logística y análisis inteligente con IA",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#fafafa",
-  "theme_color": "#27272a",
+  "background_color": "#eff6ff",
+  "theme_color": "#2563eb",
   "orientation": "portrait-primary",
   "scope": "/",
   "categories": ["logistics", "productivity"],
   "screenshots": [
     {
-      "src": "https://via.placeholder.com/540x720/fafafa/27272a?text=Conferente+Pro",
+      "src": "https://via.placeholder.com/540x720/eff6ff/2563eb?text=Conferente+Pro",
       "sizes": "540x720",
       "type": "image/png",
       "form_factor": "narrow"
     },
     {
-      "src": "https://via.placeholder.com/1280x720/fafafa/27272a?text=Conferente+Pro",
+      "src": "https://via.placeholder.com/1280x720/eff6ff/2563eb?text=Conferente+Pro",
       "sizes": "1280x720",
       "type": "image/png",
       "form_factor": "wide"

@@ -1,742 +1,412 @@
-
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { InstallManager } from './components/InstallManager';
 import { WeighingForm } from './components/WeighingForm';
-import { GlobalWeighingChat } from './components/GlobalWeighingChat';
-import { useWakeLock } from './hooks/useWakeLock';
 import { getRecords, deleteRecord, clearAllRecords, getUserProfile, saveUserProfile, getTheme, saveTheme } from './services/storageService';
-import { downloadCSV, shareToWhatsApp } from './services/exportService';
-import { trackEvent } from './services/analyticsService';
 import { WeighingRecord, Language, UserProfile } from './types';
 import { LanguageProvider, useTranslation } from './services/i18n';
 import { ToastProvider, useToast } from './components/Toast';
+import { InstallPrompt } from './components/InstallPrompt';
+import { AnalyticsDashboard } from './components/AnalyticsDashboard';
+import { initAnalytics, trackEvent } from './services/analyticsService';
 
 // Tolerance limit 200g
 const TOLERANCE_KG = 0.2;
 
-// WhatsApp Contacts Configuration
-const WHATSAPP_CONTACTS = [
-    { name: 'Yo', number: '5541996820548', label: '(41) 99682-0548' },
-    { name: 'Nicolly', number: '554191616725', label: '(41) 9161-6725' },
-    { name: 'Day', number: '554184538696', label: '(41) 8453-8696' }
-];
+// --- HELPER: Expiration Logic ---
+const checkExpirationRisk = (dateStr?: string): string | null => {
+    if (!dateStr) return null;
+    const cleanDate = dateStr.replace(/[\.-]/g, '/').trim();
+    const parts = cleanDate.split('/');
+    if (parts.length !== 3) return null;
+    const day = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10) - 1;
+    let year = parseInt(parts[2], 10);
+    if (year < 100) year += 2000; 
+    if (isNaN(day) || isNaN(month) || isNaN(year)) return null;
 
-type TimeFilter = 'all' | 'today' | 'week' | 'month' | 'year';
+    const expDate = new Date(year, month, day);
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    const diffTime = expDate.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-const MainLayout: React.FC = () => {
+    if (diffDays < 0) return `VENCIDO (${Math.abs(diffDays)}d)`;
+    if (diffDays === 0) return 'VENCE HOY';
+    if (diffDays <= 3) return `⚠️ (${diffDays}d)`;
+    if (diffDays <= 7) return `CRÍTICO (${diffDays}d)`;
+    return null;
+};
+
+// --- COMPONENT: Full Screen Image Modal ---
+const FullScreenImageModal: React.FC<{ src: string; onClose: () => void }> = ({ src, onClose }) => {
+    return (
+        <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-xl flex items-center justify-center animate-fade-in p-4" onClick={onClose}>
+            <button onClick={onClose} className="absolute top-6 right-6 p-4 bg-white/10 hover:bg-white/20 rounded-full text-white transition-all z-50 backdrop-blur-md">
+                <span className="material-icons-round text-3xl">close</span>
+            </button>
+            <img src={src} alt="Evidence Full Screen" className="max-w-full max-h-[90vh] object-contain rounded-[2rem] shadow-2xl" onClick={(e) => e.stopPropagation()} />
+        </div>
+    );
+};
+
+// --- COMPONENT: Refined History Item ---
+const HistoryItem: React.FC<{ 
+    record: WeighingRecord; 
+    onDelete: (id: string) => void;
+    onShare: (record: WeighingRecord) => void;
+    onViewImage: (src: string) => void;
+}> = ({ record, onDelete, onShare, onViewImage }) => {
+    const { t } = useTranslation();
+    const [isExpanded, setIsExpanded] = useState(false);
+
+    const netWeight = typeof record.netWeight === 'number' ? record.netWeight : 0;
+    const noteWeight = typeof record.noteWeight === 'number' ? record.noteWeight : 0;
+    const taraTotal = typeof record.taraTotal === 'number' ? record.taraTotal : 0;
+    const diff = netWeight - noteWeight;
+    const isWeightError = Math.abs(diff) > TOLERANCE_KG;
+    const riskMsg = checkExpirationRisk(record.expirationDate);
+
+    // Dynamic Border Color
+    const statusBorder = riskMsg ? 'border-red-500' : isWeightError ? 'border-orange-500' : 'border-emerald-500';
+
+    return (
+        <div className={`group bg-white dark:bg-zinc-900 rounded-[2rem] border border-zinc-100 dark:border-zinc-800 shadow-card hover:shadow-lg transition-all duration-300 mb-3 overflow-hidden relative`}>
+            {/* Status Indicator Line (Left) */}
+            <div className={`absolute top-0 bottom-0 left-0 w-1.5 ${statusBorder.replace('border', 'bg')}`}></div>
+
+            <div className="p-6 pl-7 cursor-pointer" onClick={() => setIsExpanded(!isExpanded)}>
+                <div className="flex justify-between items-start">
+                    <div className="flex-1 pr-4">
+                        <h3 className="font-bold text-zinc-900 dark:text-zinc-50 text-base leading-snug">{record.supplier}</h3>
+                        <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1 font-medium">{record.product}</p>
+                    </div>
+                    <div className="text-right">
+                         <div className={`font-mono font-bold text-xl tracking-tight ${isWeightError ? 'text-orange-600 dark:text-orange-400' : 'text-zinc-700 dark:text-zinc-200'}`}>
+                            {netWeight.toFixed(2)}<span className="text-xs ml-0.5 font-sans opacity-60 text-zinc-400">kg</span>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Badges */}
+                <div className="flex flex-wrap gap-2 mt-3 items-center">
+                    {record.productionDate && (
+                         <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-100 dark:border-zinc-800">
+                             <span className="material-icons-round text-[10px] text-zinc-400">factory</span>
+                             <span className="text-[10px] font-bold text-zinc-600 dark:text-zinc-300">{record.productionDate}</span>
+                         </div>
+                    )}
+                    {record.expirationDate && (
+                         <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-100 dark:border-zinc-800">
+                             <span className="material-icons-round text-[10px] text-zinc-400">event_busy</span>
+                             <span className="text-[10px] font-bold text-zinc-600 dark:text-zinc-300">{record.expirationDate}</span>
+                         </div>
+                    )}
+                    {record.boxes && record.boxes.qty > 0 && (
+                        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-800/30">
+                            <span className="material-icons-round text-[10px] text-blue-400">layers</span>
+                            <span className="text-[10px] font-bold text-blue-600 dark:text-blue-300">cx {record.boxes.qty}x{(record.boxes.unitTara * 1000).toFixed(0)}g</span>
+                        </div>
+                    )}
+                    {riskMsg && (
+                        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-800/30 animate-pulse">
+                            <span className="material-icons-round text-[10px] text-red-500">warning</span>
+                            <span className="text-[10px] font-bold text-red-600 dark:text-red-300">{riskMsg}</span>
+                        </div>
+                    )}
+                     {record.aiAnalysis && (
+                         <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-purple-50 dark:bg-purple-900/10 border border-purple-100 dark:border-purple-800/30">
+                            <span className="material-icons-round text-[10px] text-purple-400">smart_toy</span>
+                            <span className="text-[10px] font-bold text-purple-600 dark:text-purple-300">IA</span>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* Expanded Details */}
+            {isExpanded && (
+                <div className="bg-zinc-50/80 dark:bg-zinc-950/50 px-7 pb-7 pt-2 border-t border-zinc-100 dark:border-zinc-800/50 animate-slide-down">
+                    <div className="grid grid-cols-2 gap-x-8 gap-y-3 mt-4 text-xs">
+                        <div className="flex justify-between items-center py-2 border-b border-zinc-200 dark:border-zinc-800 border-dashed">
+                            <span className="text-zinc-500 dark:text-zinc-400 font-medium">Peso Nota</span>
+                            <span className="font-mono font-bold text-zinc-800 dark:text-white text-sm">{noteWeight}</span>
+                        </div>
+                         <div className="flex justify-between items-center py-2 border-b border-zinc-200 dark:border-zinc-800 border-dashed">
+                            <span className="text-zinc-500 dark:text-zinc-400 font-medium">Diferencia</span>
+                            <span className={`font-mono font-bold text-sm ${diff > 0 ? 'text-emerald-600' : diff < 0 ? 'text-red-600' : 'text-zinc-500'}`}>
+                                {diff > 0 ? '+' : ''}{diff.toFixed(2)}
+                            </span>
+                        </div>
+                        <div className="flex justify-between items-center py-2 border-b border-zinc-200 dark:border-zinc-800 border-dashed">
+                            <span className="text-zinc-500 dark:text-zinc-400 font-medium">Tara Total</span>
+                            <span className="font-mono font-bold text-zinc-800 dark:text-white text-sm">{taraTotal.toFixed(2)}</span>
+                        </div>
+                         {record.batch && (
+                            <div className="flex justify-between items-center col-span-2 py-2 border-b border-zinc-200 dark:border-zinc-800 border-dashed">
+                                <span className="text-zinc-500 dark:text-zinc-400 font-medium">Lote</span>
+                                <span className="font-mono font-bold text-zinc-800 dark:text-white text-sm">{record.batch}</span>
+                            </div>
+                        )}
+                        {record.aiAnalysis && (
+                            <div className="col-span-2 mt-4 bg-white dark:bg-zinc-800 p-4 rounded-2xl border border-purple-100 dark:border-purple-900/30 shadow-sm">
+                                <p className="font-black text-purple-600 dark:text-purple-300 text-[10px] uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+                                    <span className="material-icons-round text-xs">smart_toy</span> Análisis IA
+                                </p>
+                                <p className="text-zinc-600 dark:text-zinc-300 leading-relaxed font-medium">{record.aiAnalysis}</p>
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="flex gap-3 justify-end mt-6">
+                        {record.evidence && (
+                            <button onClick={(e) => { e.stopPropagation(); onViewImage(record.evidence!); }} className="w-12 h-12 flex items-center justify-center rounded-2xl bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-500 hover:text-primary-600 hover:border-primary-200 transition-colors shadow-sm">
+                                <span className="material-icons-round text-xl">image</span>
+                            </button>
+                        )}
+                        <button onClick={(e) => { e.stopPropagation(); onShare(record); }} className="flex-1 py-3 px-5 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 rounded-2xl font-bold text-xs flex items-center justify-center gap-2 hover:bg-emerald-100 transition-colors border border-emerald-100 dark:border-emerald-800/30">
+                            <span className="material-icons-round text-sm">share</span> WhatsApp
+                        </button>
+                        <button onClick={(e) => { e.stopPropagation(); onDelete(record.id); }} className="w-12 h-12 flex items-center justify-center rounded-2xl bg-red-50 dark:bg-red-900/20 text-red-500 hover:bg-red-100 border border-red-100 dark:border-red-900/30 transition-colors">
+                            <span className="material-icons-round text-xl">delete</span>
+                        </button>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
+// --- MAIN APP COMPONENT ---
+const App: React.FC = () => {
     const { t, language, setLanguage } = useTranslation();
     const { showToast } = useToast();
     const [activeTab, setActiveTab] = useState<'weigh' | 'history'>('weigh');
-    
-    // Enable wake lock to prevent screen sleep
-    useWakeLock();
-    
-    // Theme State
-    const [isDarkMode, setIsDarkMode] = useState(getTheme() === 'dark');
-
-    // History Filters State
-    const [searchTerm, setSearchTerm] = useState('');
-    const [timeFilter, setTimeFilter] = useState<TimeFilter>('all');
-    
-    // UI State
-    const [viewingEvidence, setViewingEvidence] = useState<string | null>(null);
-    const [whatsappModalOpen, setWhatsappModalOpen] = useState(false);
-    const [profileModalOpen, setProfileModalOpen] = useState(false);
-    const [globalChatOpen, setGlobalChatOpen] = useState(false);
-    const [selectedRecordForWhatsapp, setSelectedRecordForWhatsapp] = useState<WeighingRecord | null>(null);
-    
     const [records, setRecords] = useState<WeighingRecord[]>([]);
     const [userProfile, setUserProfile] = useState<UserProfile>(getUserProfile());
-    
-    // Profile Editing State
-    const [tempProfile, setTempProfile] = useState<UserProfile>(getUserProfile());
-    const profileImageInputRef = useRef<HTMLInputElement>(null);
+    const [theme, setThemeState] = useState<'light' | 'dark'>(getTheme());
+    const [isMenuOpen, setIsMenuOpen] = useState(false);
+    const [viewImage, setViewImage] = useState<string | null>(null);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [filterPeriod, setFilterPeriod] = useState<'all' | 'today' | 'week'>('all');
 
     useEffect(() => {
-        // Initial load
+        initAnalytics();
         setRecords(getRecords());
-        setUserProfile(getUserProfile());
-
-        // Apply theme on mount
-        if (isDarkMode) {
-            document.documentElement.classList.add('dark');
-        } else {
-            document.documentElement.classList.remove('dark');
-        }
     }, []);
 
-    const toggleTheme = () => {
-        const newMode = !isDarkMode;
-        setIsDarkMode(newMode);
-        saveTheme(newMode ? 'dark' : 'light');
-        if (newMode) {
-            document.documentElement.classList.add('dark');
-        } else {
-            document.documentElement.classList.remove('dark');
-        }
-    };
-
     useEffect(() => {
-        // Refresh on tab change to history to ensure latest data
-        if (activeTab === 'history') {
-            setRecords(getRecords());
-        }
-    }, [activeTab]);
+        if (theme === 'dark') document.documentElement.classList.add('dark');
+        else document.documentElement.classList.remove('dark');
+    }, [theme]);
 
-    // --- Filtering Logic ---
-    const filteredRecords = useMemo(() => {
-        let result = records;
+    useEffect(() => { if (activeTab === 'history') setRecords(getRecords()); }, [activeTab]);
 
-        // 1. Search Filter
-        if (searchTerm.trim()) {
-            const lowerQuery = searchTerm.toLowerCase();
-            result = result.filter(r => 
-                r.supplier.toLowerCase().includes(lowerQuery) || 
-                r.product.toLowerCase().includes(lowerQuery) ||
-                (r.batch && r.batch.toLowerCase().includes(lowerQuery))
-            );
-        }
-
-        // 2. Time Filter
-        const now = new Date();
-        now.setHours(0, 0, 0, 0); // Start of today
-        
-        if (timeFilter !== 'all') {
-            result = result.filter(r => {
-                const recordDate = new Date(r.timestamp);
-                recordDate.setHours(0, 0, 0, 0);
-
-                if (timeFilter === 'today') {
-                    return recordDate.getTime() === now.getTime();
-                } else if (timeFilter === 'week') {
-                    const sevenDaysAgo = new Date(now);
-                    sevenDaysAgo.setDate(now.getDate() - 7);
-                    return recordDate >= sevenDaysAgo;
-                } else if (timeFilter === 'month') {
-                    return recordDate.getMonth() === now.getMonth() && recordDate.getFullYear() === now.getFullYear();
-                } else if (timeFilter === 'year') {
-                    return recordDate.getFullYear() === now.getFullYear();
-                }
-                return true;
-            });
-        }
-
-        return result;
-    }, [records, searchTerm, timeFilter]);
-
-    // --- Export Logic ---
-    const handleExportCSV = () => {
-        if (filteredRecords.length === 0) {
-            showToast("No hay datos para exportar", "info");
-            return;
-        }
-
-        try {
-            const filename = `conferente_export_${new Date().toISOString().slice(0, 10)}.csv`;
-            downloadCSV(filteredRecords, filename);
-            showToast(`✅ Exportado: ${filename}`, "success");
-            trackEvent('export_csv', { recordCount: filteredRecords.length });
-        } catch (error) {
-            showToast("Error al exportar CSV", "error");
-            console.error("Export error:", error);
-        }
+    const toggleTheme = () => {
+        const newTheme = theme === 'light' ? 'dark' : 'light';
+        setThemeState(newTheme);
+        saveTheme(newTheme);
     };
 
-    const handleClearHistory = (e: React.MouseEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-
-        if (window.confirm(t('msg_confirm_delete_all'))) {
-            clearAllRecords();
-            setRecords([]);
+    const handleDeleteRecord = (id: string) => {
+        if (confirm(t('msg_confirm_delete'))) {
+            deleteRecord(id);
+            setRecords(getRecords());
             showToast(t('msg_history_cleared'), 'success');
         }
     };
 
-    const openWhatsappModal = (record: WeighingRecord) => {
-        setSelectedRecordForWhatsapp(record);
-        setWhatsappModalOpen(true);
-    };
-
-    const sendToContact = (phone: string) => {
-        if (!selectedRecordForWhatsapp) return;
-
-        const record = selectedRecordForWhatsapp;
-        const diff = record.netWeight - record.noteWeight;
-        const message = `${t('rpt_title')}
-📅 ${new Date(record.timestamp).toLocaleString()}
-${t('rpt_supplier')} ${record.supplier}
-${t('rpt_product')} ${record.product}
-${record.batch ? `${t('rpt_batch')} ${record.batch}` : ''}
-${t('rpt_note')} ${record.noteWeight}kg | ⚖️ ${t('rpt_net')} ${record.netWeight}kg
-${t('rpt_tara')} ${record.taraTotal.toFixed(3)}kg (${record.boxes.qty} x ${record.boxes.unitTara*1000}g)
-${t('rpt_diff')} ${diff > 0 ? '+' : ''}${diff.toFixed(2)} kg
-${record.aiAnalysis ? `${t('rpt_ai_obs')} ${record.aiAnalysis}` : ''}
-${record.evidence ? '📸 [FOTO]' : ''}`;
-        
-        const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+    const handleShare = (record: WeighingRecord) => {
+        const diff = (record.netWeight || 0) - (record.noteWeight || 0);
+        const icon = Math.abs(diff) <= TOLERANCE_KG ? '✅' : '⚠️';
+        const msg = `${t('rpt_title')}\n${t('rpt_supplier')} ${record.supplier}\n${t('rpt_product')} ${record.product}\n${record.batch ? `${t('rpt_batch')} ${record.batch}\n` : ''}${record.expirationDate ? `${t('rpt_expiration')} ${record.expirationDate}\n` : ''}\n${t('rpt_note')} ${record.noteWeight}kg\n${t('rpt_gross')} ${record.grossWeight}kg\n${t('rpt_tara')} ${record.taraTotal ? record.taraTotal.toFixed(2) : '0.00'}kg\n${t('rpt_net')} ${(record.netWeight || 0).toFixed(2)}kg\n\n${t('rpt_diff')} ${diff > 0 ? '+' : ''}${diff.toFixed(2)}kg ${icon}${record.aiAnalysis ? `\n${t('rpt_ai_obs')} ${record.aiAnalysis}` : ''}`;
+        const url = `https://wa.me/?text=${encodeURIComponent(msg)}`;
         window.open(url, '_blank');
-        
-        // Close modal after sending
-        setWhatsappModalOpen(false);
-        setSelectedRecordForWhatsapp(null);
+        trackEvent('share_whatsapp', { recordId: record.id });
     };
 
-    const toggleLanguage = () => {
-        const nextLang: Record<Language, Language> = {
-            'pt': 'es',
-            'es': 'en',
-            'en': 'pt'
-        };
-        setLanguage(nextLang[language]);
-    };
-
-    const getFlag = (lang: Language) => {
-        switch(lang) {
-            case 'pt': return '🇧🇷';
-            case 'es': return '🇪🇸';
-            case 'en': return '🇺🇸';
-        }
-    };
-
-    // --- Profile Logic ---
-    const handleProfileImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onload = (event) => {
-                const img = new Image();
-                img.onload = () => {
-                    const canvas = document.createElement('canvas');
-                    const MAX_SIZE = 256; // Avatar size
-                    let width = img.width;
-                    let height = img.height;
-
-                    // Square crop aspect ratio
-                    const minDim = Math.min(width, height);
-                    const sx = (width - minDim) / 2;
-                    const sy = (height - minDim) / 2;
-
-                    canvas.width = MAX_SIZE;
-                    canvas.height = MAX_SIZE;
-
-                    const ctx = canvas.getContext('2d');
-                    ctx?.drawImage(img, sx, sy, minDim, minDim, 0, 0, MAX_SIZE, MAX_SIZE);
-                    
-                    const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.8);
-                    setTempProfile(prev => ({ ...prev, photo: compressedDataUrl }));
-                };
-                img.src = event.target?.result as string;
-            };
-            reader.readAsDataURL(file);
-        }
-    };
-
-    const saveProfile = () => {
-        saveUserProfile(tempProfile);
-        setUserProfile(tempProfile);
-        setProfileModalOpen(false);
+    const handleProfileSave = (e: React.FormEvent) => {
+        e.preventDefault();
+        saveUserProfile(userProfile);
         showToast(t('msg_profile_saved'), 'success');
+        setIsMenuOpen(false);
     };
 
-    const getInitials = (name: string) => {
-        return name
-            .split(' ')
-            .map(n => n[0])
-            .slice(0, 2)
-            .join('')
-            .toUpperCase();
+    const filteredRecords = records.filter(r => {
+        const matchesSearch = r.supplier.toLowerCase().includes(searchTerm.toLowerCase()) || r.product.toLowerCase().includes(searchTerm.toLowerCase());
+        const recordDate = new Date(r.timestamp);
+        const today = new Date();
+        let matchesPeriod = true;
+        if (filterPeriod === 'today') matchesPeriod = recordDate.toDateString() === today.toDateString();
+        else if (filterPeriod === 'week') { const weekAgo = new Date(); weekAgo.setDate(today.getDate() - 7); matchesPeriod = recordDate >= weekAgo; }
+        return matchesSearch && matchesPeriod;
+    });
+
+    const exportCSV = () => {
+        const headers = ["Data", "Fornecedor", "Produto", "Lote", "Validade", "Peso Nota", "Peso Bruto", "Tara", "Liquido", "Diferenca", "Status"];
+        const rows = filteredRecords.map(r => [new Date(r.timestamp).toLocaleDateString(), r.supplier, r.product, r.batch || '', r.expirationDate || '', r.noteWeight, r.grossWeight, r.taraTotal || 0, r.netWeight, (r.netWeight - r.noteWeight).toFixed(2), r.status]);
+        const csvContent = "data:text/csv;charset=utf-8," + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+        const link = document.createElement("a");
+        link.setAttribute("href", encodeURI(csvContent));
+        link.setAttribute("download", `conferente_data_${Date.now()}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        trackEvent('export_csv', { count: filteredRecords.length });
     };
 
     return (
-        <div className="min-h-screen bg-[#f0f4f8] dark:bg-[#0f1014] text-slate-800 dark:text-slate-200 font-sans selection:bg-primary-200 transition-colors duration-300">
+        <div className="min-h-screen font-sans relative overflow-x-hidden selection:bg-primary-500/30 selection:text-primary-900">
             <InstallManager />
+            <AnalyticsDashboard />
+            {viewImage && <FullScreenImageModal src={viewImage} onClose={() => setViewImage(null)} />}
 
-            {/* Evidence Modal */}
-            {viewingEvidence && (
-                <div 
-                    className="fixed inset-0 z-[60] bg-black/95 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in"
-                    onClick={() => setViewingEvidence(null)}
-                >
-                    <div className="relative max-w-lg w-full">
-                        <img 
-                            src={viewingEvidence} 
-                            alt="Evidence" 
-                            className="w-full h-auto rounded-[2rem] shadow-2xl" 
-                            onClick={(e) => e.stopPropagation()} 
-                        />
-                        <button 
-                            className="absolute top-4 right-4 bg-white/10 text-white p-3 rounded-full backdrop-blur-md hover:bg-white/20 transition-colors"
-                            onClick={() => setViewingEvidence(null)}
-                        >
-                            <span className="material-icons-round pointer-events-none">close</span>
-                        </button>
-                    </div>
-                </div>
-            )}
-
-            {/* Profile Modal */}
-            {profileModalOpen && (
-                <div 
-                    className="fixed inset-0 z-[75] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in"
-                    onClick={() => setProfileModalOpen(false)}
-                >
-                    <div 
-                        className="bg-white dark:bg-gradient-to-br dark:from-slate-800 dark:to-slate-900 w-full max-w-sm rounded-[3rem] p-8 shadow-2xl transform transition-all animate-slide-up relative"
-                        onClick={(e) => e.stopPropagation()}
-                    >
-                         <button 
-                            className="absolute top-6 right-6 text-slate-400 hover:text-slate-600 dark:hover:text-white p-2"
-                            onClick={() => setProfileModalOpen(false)}
-                        >
-                            <span className="material-icons-round">close</span>
-                        </button>
-
-                        <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-8 text-center">{t('lbl_profile')}</h3>
-
-                        <div className="flex flex-col items-center mb-8">
-                            <div className="relative group cursor-pointer" onClick={() => profileImageInputRef.current?.click()}>
-                                {tempProfile.photo ? (
-                                    <img 
-                                        src={tempProfile.photo} 
-                                        alt="Profile" 
-                                        className="w-28 h-28 rounded-full object-cover border-4 border-slate-100 dark:border-slate-700 shadow-xl"
-                                    />
-                                ) : (
-                                    <div className="w-28 h-28 rounded-full bg-slate-100 dark:bg-slate-700/50 flex items-center justify-center border-4 border-slate-50 dark:border-transparent text-slate-400 dark:text-slate-500 shadow-inner">
-                                        <span className="material-icons-round text-5xl">person</span>
-                                    </div>
-                                )}
-                                <div className="absolute bottom-0 right-0 bg-primary-600 text-white p-2 rounded-full shadow-lg border-2 border-white dark:border-slate-800 group-hover:scale-110 transition-transform">
-                                    <span className="material-icons-round text-sm font-bold block">edit</span>
-                                </div>
-                            </div>
-                            <input 
-                                ref={profileImageInputRef}
-                                type="file" 
-                                accept="image/*" 
-                                className="hidden"
-                                onChange={handleProfileImageUpload}
-                            />
-                        </div>
-
-                        <div className="space-y-4">
-                            <div>
-                                <label className="block text-xs font-bold text-slate-400 dark:text-slate-500 uppercase mb-2 ml-2 tracking-wide">{t('lbl_name')}</label>
-                                <input 
-                                    type="text" 
-                                    value={tempProfile.name}
-                                    onChange={(e) => setTempProfile(prev => ({ ...prev, name: e.target.value }))}
-                                    placeholder={t('ph_name')}
-                                    className="w-full bg-slate-100 dark:bg-black/20 border-none rounded-2xl px-5 py-4 font-bold text-slate-700 dark:text-white outline-none focus:ring-4 focus:ring-primary-100 dark:focus:ring-primary-500/20 transition-all"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold text-slate-400 dark:text-slate-500 uppercase mb-2 ml-2 tracking-wide">{t('lbl_role')}</label>
-                                <input 
-                                    type="text" 
-                                    value={tempProfile.role}
-                                    onChange={(e) => setTempProfile(prev => ({ ...prev, role: e.target.value }))}
-                                    placeholder={t('ph_role')}
-                                    className="w-full bg-slate-100 dark:bg-black/20 border-none rounded-2xl px-5 py-4 font-medium text-slate-700 dark:text-white outline-none focus:ring-4 focus:ring-primary-100 dark:focus:ring-primary-500/20 transition-all"
-                                />
-                            </div>
-                            
-                            <button 
-                                onClick={saveProfile}
-                                className="w-full bg-slate-900 dark:bg-white text-white dark:text-slate-900 py-4 rounded-2xl font-bold shadow-xl hover:scale-[1.02] active:scale-95 transition-all mt-6"
-                            >
-                                {t('btn_save')}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* WhatsApp Contact Selection Modal */}
-            {whatsappModalOpen && (
-                <div 
-                    className="fixed inset-0 z-[70] bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center animate-fade-in"
-                    onClick={() => setWhatsappModalOpen(false)}
-                >
-                    <div 
-                        className="bg-white dark:bg-gradient-to-b dark:from-slate-800 dark:to-slate-900 w-full max-w-sm rounded-t-[3rem] sm:rounded-[3rem] p-8 shadow-2xl transform transition-all animate-slide-up"
-                        onClick={(e) => e.stopPropagation()}
-                    >
-                        <div className="flex justify-between items-center mb-8">
-                            <h3 className="text-xl font-bold text-slate-800 dark:text-white flex items-center gap-3">
-                                <span className="bg-[#25D366] text-white w-8 h-8 rounded-full flex items-center justify-center shadow-md">
-                                    <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12.031 6.172c-3.181 0-5.767 2.586-5.768 5.766-.001 1.298.38 2.27 1.019 3.287l-.711 2.592 2.654-.696c1.001.572 2.09.893 3.182.893h.004c3.178 0 5.767-2.587 5.767-5.766.001-3.185-2.585-5.776-5.767-5.776zm6.868 8.974c-1.686 2.811-4.721 4.397-7.989 4.397h-.006c-1.42 0-2.822-.376-4.079-1.107l-4.529 1.189 1.218-4.414c-.808-1.319-1.236-2.827-1.235-4.383.004-4.543 3.702-8.24 8.241-8.24 2.2 0 4.27 1.171 5.824 2.726 1.554 1.555 2.544 3.749 2.548 6.096.002 1.259-.288 2.457-.865 3.526l.872.21z"/></svg>
-                                </span>
-                                Enviar Reporte
-                            </h3>
-                            <button onClick={() => setWhatsappModalOpen(false)} className="bg-slate-100 dark:bg-white/10 p-2 rounded-full text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-white/20 transition-colors">
-                                <span className="material-icons-round text-lg">close</span>
-                            </button>
-                        </div>
-                        
-                        <div className="space-y-3">
-                            {WHATSAPP_CONTACTS.map((contact, idx) => (
-                                <button
-                                    key={idx}
-                                    onClick={() => sendToContact(contact.number)}
-                                    className="w-full flex items-center justify-between p-4 rounded-2xl border border-slate-100 dark:border-transparent bg-slate-50 dark:bg-black/20 hover:bg-[#25D366]/10 hover:border-[#25D366] dark:hover:bg-[#25D366]/10 dark:hover:border-transparent hover:text-[#075E54] dark:hover:text-[#25D366] transition-all group active:scale-95"
-                                >
-                                    <div className="flex items-center gap-4">
-                                        <div className="w-10 h-10 rounded-full bg-white dark:bg-slate-700 flex items-center justify-center text-slate-400 dark:text-slate-300 font-bold text-sm shadow-sm group-hover:bg-[#25D366] group-hover:text-white transition-colors">
-                                            {contact.name[0]}
-                                        </div>
-                                        <div className="flex flex-col items-start">
-                                            <span className="font-bold text-slate-700 dark:text-slate-200 group-hover:text-inherit text-base">{contact.name}</span>
-                                            <span className="text-xs text-slate-400 dark:text-slate-500 font-mono">{contact.label}</span>
-                                        </div>
-                                    </div>
-                                    <span className="material-icons-round text-slate-300 dark:text-slate-600 group-hover:text-inherit">arrow_forward_ios</span>
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Main Content Area */}
-            <main className="max-w-md mx-auto min-h-screen relative">
-                
-                {/* Modern Header */}
-                <header className="px-6 pt-12 pb-6 flex justify-between items-center sticky top-0 z-20 bg-[#f0f4f8]/90 dark:bg-[#0f1014]/80 backdrop-blur-xl transition-all">
-                    <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 bg-primary-600 rounded-full flex items-center justify-center shadow-lg shadow-primary-500/30 text-white">
-                            <span className="material-icons-round pointer-events-none">inventory</span>
-                        </div>
-                        <div>
-                            <h1 className="text-xl font-black text-slate-800 dark:text-white tracking-tight leading-none mb-0.5">{t('app_name')}</h1>
-                            <p className="text-xs text-slate-400 dark:text-slate-500 font-bold tracking-widest uppercase">{t('app_subtitle')}</p>
-                        </div>
-                    </div>
-                    
+            {/* HEADER */}
+            <header className="fixed top-0 w-full z-40 glass transition-all duration-300">
+                <div className="max-w-7xl mx-auto px-4 lg:px-6 h-16 flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                        {/* Dark Mode Toggle */}
-                        <button 
-                            onClick={toggleTheme}
-                            className="w-11 h-11 bg-white dark:bg-white/5 rounded-full flex items-center justify-center text-xl shadow-sm dark:shadow-none border border-slate-200 dark:border-transparent hover:scale-110 active:scale-90 transition-all"
-                        >
-                            <span className="pointer-events-none material-icons-round text-slate-400 dark:text-yellow-400 text-xl">
-                                {isDarkMode ? 'light_mode' : 'dark_mode'}
-                            </span>
+                         <div className="w-10 h-10 bg-gradient-to-br from-primary-600 to-primary-800 rounded-2xl flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-primary-500/30">C</div>
+                         <div className="hidden sm:block">
+                             <h1 className="font-bold text-zinc-900 dark:text-white leading-none tracking-tight text-lg">Conferente</h1>
+                             <p className="text-[10px] text-zinc-500 dark:text-zinc-400 font-bold uppercase tracking-widest mt-0.5">Pro Assistant</p>
+                         </div>
+                    </div>
+                    <div className="hidden md:flex items-center gap-1.5 bg-zinc-100 dark:bg-zinc-800/50 p-1.5 rounded-full border border-zinc-200 dark:border-zinc-700/50">
+                        <button onClick={() => setActiveTab('weigh')} className={`px-5 py-2 rounded-full text-xs font-bold transition-all ${activeTab === 'weigh' ? 'bg-white dark:bg-zinc-700 text-primary-600 dark:text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-700 dark:text-zinc-400'}`}>Conferencia</button>
+                        <button onClick={() => setActiveTab('history')} className={`px-5 py-2 rounded-full text-xs font-bold transition-all ${activeTab === 'history' ? 'bg-white dark:bg-zinc-700 text-primary-600 dark:text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-700 dark:text-zinc-400'}`}>Histórico</button>
+                    </div>
+                    <div className="flex items-center gap-4">
+                        <button onClick={toggleTheme} className="w-10 h-10 rounded-full bg-zinc-50 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 flex items-center justify-center hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors border border-zinc-200 dark:border-zinc-700">
+                            <span className="material-icons-round text-lg">{theme === 'light' ? 'dark_mode' : 'light_mode'}</span>
                         </button>
-
-                        {/* Language Switcher */}
-                        <button 
-                            onClick={toggleLanguage}
-                            className="w-11 h-11 bg-white dark:bg-white/5 rounded-full flex items-center justify-center text-xl shadow-sm dark:shadow-none border border-slate-200 dark:border-transparent hover:scale-110 active:scale-90 transition-all"
-                        >
-                            <span className="pointer-events-none">{getFlag(language)}</span>
-                        </button>
-
-                        {/* User Profile Trigger */}
-                        <button 
-                            onClick={() => { setTempProfile(userProfile); setProfileModalOpen(true); }}
-                            className="w-11 h-11 rounded-full flex items-center justify-center border border-slate-200 dark:border-transparent shadow-sm dark:shadow-none hover:scale-110 active:scale-90 transition-all overflow-hidden bg-white dark:bg-white/5 p-0.5"
-                        >
-                            {userProfile.photo ? (
-                                <img src={userProfile.photo} alt={userProfile.name} className="w-full h-full object-cover rounded-full" />
-                            ) : (
-                                <div className="text-slate-400 dark:text-slate-400 font-bold text-xs">
-                                    {getInitials(userProfile.name)}
+                        <div className="h-6 w-px bg-zinc-200 dark:bg-zinc-700 mx-1"></div>
+                        <button onClick={() => setIsMenuOpen(true)} className="flex items-center gap-3 group">
+                            <div className="text-right hidden md:block">
+                                <p className="text-xs font-bold text-zinc-800 dark:text-white group-hover:text-primary-600 transition-colors">{userProfile.name}</p>
+                                <p className="text-[10px] text-zinc-500 dark:text-zinc-400 uppercase tracking-wide">{userProfile.role}</p>
+                            </div>
+                            <div className="relative">
+                                <div className="w-10 h-10 rounded-full bg-zinc-200 dark:bg-zinc-800 overflow-hidden ring-2 ring-white dark:ring-zinc-700 shadow-md transition-transform group-hover:scale-105">
+                                    {userProfile.photo ? <img src={userProfile.photo} alt="Profile" className="w-full h-full object-cover" /> : <span className="material-icons-round text-zinc-400 w-full h-full flex items-center justify-center text-lg">person</span>}
                                 </div>
-                            )}
+                                <div className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 border-2 border-white dark:border-zinc-900 rounded-full"></div>
+                            </div>
                         </button>
                     </div>
-                </header>
+                </div>
+            </header>
 
-                <div className="px-5">
-                    {activeTab === 'weigh' ? (
-                        <WeighingForm />
-                    ) : (
-                        <div className="pb-32 space-y-6">
-                            
-                            {/* --- HISTORY FILTERS SECTION --- */}
-                            <div className="sticky top-[100px] z-10 bg-[#f0f4f8]/95 dark:bg-[#0f1014]/90 backdrop-blur-md pb-4 pt-2 transition-colors duration-300">
-                                
-                                {/* 1. Search Bar */}
-                                <div className="relative mb-3">
-                                    <input 
-                                        type="text" 
-                                        value={searchTerm}
-                                        onChange={(e) => setSearchTerm(e.target.value)}
-                                        placeholder={t('ph_search')}
-                                        className="w-full bg-white dark:bg-white/10 border-none rounded-full pl-12 pr-10 py-4 text-sm font-bold shadow-sm dark:shadow-none focus:ring-4 focus:ring-primary-100 dark:focus:ring-white/10 outline-none transition-all placeholder:text-slate-400 dark:placeholder:text-slate-500 dark:text-white"
-                                    />
-                                    <span className="material-icons-round absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">search</span>
-                                    {searchTerm && (
-                                        <button 
-                                            onClick={() => setSearchTerm('')}
-                                            className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-                                        >
-                                            <span className="material-icons-round text-lg">close</span>
-                                        </button>
-                                    )}
-                                </div>
-
-                                {/* 2. Time Filters (Horizontal Scroll) */}
-                                <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
-                                    {[
-                                        { id: 'all', label: t('filter_all') },
-                                        { id: 'today', label: t('filter_today') },
-                                        { id: 'week', label: t('filter_week') },
-                                        { id: 'month', label: t('filter_month') },
-                                        { id: 'year', label: t('filter_year') }
-                                    ].map(filter => (
-                                        <button
-                                            key={filter.id}
-                                            onClick={() => setTimeFilter(filter.id as TimeFilter)}
-                                            className={`px-5 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-all ${
-                                                timeFilter === filter.id 
-                                                ? 'bg-slate-800 dark:bg-white text-white dark:text-slate-900 shadow-md transform scale-105' 
-                                                : 'bg-white dark:bg-white/5 text-slate-500 dark:text-slate-400 border border-transparent hover:bg-slate-100 dark:hover:bg-white/10'
-                                            }`}
-                                        >
-                                            {filter.label}
-                                        </button>
+            {/* SIDE MENU */}
+            {isMenuOpen && (
+                <div className="fixed inset-0 z-50 flex justify-end">
+                    <div className="absolute inset-0 bg-black/40 backdrop-blur-sm transition-opacity" onClick={() => setIsMenuOpen(false)}></div>
+                    <div className="relative w-80 bg-white dark:bg-zinc-900 h-full shadow-2xl p-8 overflow-y-auto animate-slide-left border-l border-zinc-100 dark:border-zinc-800 flex flex-col">
+                        <div className="flex justify-between items-center mb-8">
+                            <h2 className="text-lg font-bold dark:text-white">{t('lbl_profile')}</h2>
+                            <button onClick={() => setIsMenuOpen(false)} className="w-9 h-9 flex items-center justify-center bg-zinc-50 dark:bg-zinc-800 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors">
+                                <span className="material-icons-round dark:text-white text-sm">close</span>
+                            </button>
+                        </div>
+                        <div className="flex flex-col items-center gap-4 mb-8">
+                            <div className="w-28 h-28 rounded-full bg-zinc-100 dark:bg-zinc-800 overflow-hidden relative group border-4 border-white dark:border-zinc-800 shadow-xl">
+                                {userProfile.photo ? <img src={userProfile.photo} alt="User" className="w-full h-full object-cover" /> : <span className="material-icons-round text-4xl text-zinc-300 w-full h-full flex items-center justify-center">person</span>}
+                                <label className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
+                                    <span className="material-icons-round text-white">edit</span>
+                                    <input type="file" accept="image/*" className="hidden" onChange={(e) => { const file = e.target.files?.[0]; if (file) { const reader = new FileReader(); reader.onload = ev => setUserProfile(p => ({ ...p, photo: ev.target?.result as string })); reader.readAsDataURL(file); } }} />
+                                </label>
+                            </div>
+                            <p className="text-sm text-primary-600 dark:text-primary-400 font-bold cursor-pointer hover:underline">{t('btn_change_photo')}</p>
+                        </div>
+                        <form onSubmit={handleProfileSave} className="space-y-6 flex-1">
+                            <div>
+                                <label className="text-xs font-black text-zinc-400 uppercase mb-2.5 block tracking-widest">{t('lbl_name')}</label>
+                                <input type="text" value={userProfile.name} onChange={e => setUserProfile(p => ({...p, name: e.target.value}))} className="w-full bg-zinc-50 dark:bg-zinc-800 border-0 rounded-2xl px-5 py-4 dark:text-white text-sm font-bold transition-all outline-none focus:ring-2 focus:ring-primary-500/50" placeholder={t('ph_name')} />
+                            </div>
+                            <div>
+                                <label className="text-xs font-black text-zinc-400 uppercase mb-2.5 block tracking-widest">{t('lbl_role')}</label>
+                                <input type="text" value={userProfile.role} onChange={e => setUserProfile(p => ({...p, role: e.target.value}))} className="w-full bg-zinc-50 dark:bg-zinc-800 border-0 rounded-2xl px-5 py-4 dark:text-white text-sm font-bold transition-all outline-none focus:ring-2 focus:ring-primary-500/50" placeholder={t('ph_role')} />
+                            </div>
+                            <div className="pt-4 border-t border-zinc-100 dark:border-zinc-800">
+                                <label className="text-xs font-black text-zinc-400 uppercase mb-3 block tracking-widest">Idioma</label>
+                                <div className="grid grid-cols-3 gap-2">
+                                    {(['pt', 'es', 'en'] as const).map(lang => (
+                                        <button key={lang} type="button" onClick={() => setLanguage(lang)} className={`py-2.5 rounded-xl text-xs font-bold uppercase transition-all border ${language === lang ? 'bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 border-transparent shadow-md' : 'bg-transparent text-zinc-500 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700 hover:border-zinc-300'}`}>{lang}</button>
                                     ))}
                                 </div>
                             </div>
+                        </form>
+                        <div className="mt-auto pt-6">
+                            <button onClick={handleProfileSave} className="w-full bg-primary-600 hover:bg-primary-700 text-white py-4 rounded-2xl font-bold shadow-lg shadow-primary-500/30 transition-all active:scale-[0.98]">{t('btn_save')}</button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
-                            <div className="flex justify-between items-center px-2">
-                                <h2 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">
-                                    {t('hist_recent')} ({filteredRecords.length})
-                                </h2>
-                            </div>
-                            
-                            {/* Action Buttons: Export & Delete */}
-                            {records.length > 0 && (
-                                <div className="grid grid-cols-2 gap-3 mb-2">
-                                    <button 
-                                        onClick={handleExportCSV}
-                                        className="bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-transparent py-4 rounded-3xl flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-95 transition-all shadow-sm dark:shadow-none"
-                                        type="button"
-                                    >
-                                        <span className="material-icons-round">download</span>
-                                        <span className="font-bold text-sm">{t('btn_export')}</span>
-                                    </button>
-                                    <button 
-                                        onClick={handleClearHistory}
-                                        className="bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 border border-red-100 dark:border-transparent py-4 rounded-3xl flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-95 transition-all shadow-sm dark:shadow-none"
-                                        type="button"
-                                    >
-                                        <span className="material-icons-round">delete_forever</span>
-                                        <span className="font-bold text-sm">{t('btn_delete_all_history')}</span>
-                                    </button>
+            <main className="pt-24 pb-32 px-4 w-full">
+                <div className="max-w-xl mx-auto">
+                    {activeTab === 'weigh' && <div className="animate-fade-in"><WeighingForm /></div>}
+                    {activeTab === 'history' && (
+                        <div className="animate-fade-in">
+                            <div className="sticky top-20 z-30 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-md rounded-[1.5rem] border border-white/20 dark:border-white/5 shadow-subtle p-4 mb-6 space-y-3">
+                                 <div className="relative group">
+                                    <span className="material-icons-round absolute left-4 top-3 text-zinc-400 text-xl group-focus-within:text-primary-500 transition-colors">search</span>
+                                    <input type="text" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder={t('ph_search')} className="w-full pl-12 pr-4 py-3 bg-zinc-100 dark:bg-zinc-800 rounded-2xl outline-none dark:text-white font-medium text-sm focus:bg-white dark:focus:bg-zinc-700 border-0 focus:ring-2 focus:ring-primary-500/50 transition-all placeholder:text-zinc-400" />
                                 </div>
-                            )}
-                            
+                                <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar items-center">
+                                    {[
+                                        { id: 'all', label: t('filter_all') },
+                                        { id: 'today', label: t('filter_today') },
+                                        { id: 'week', label: t('filter_week') }
+                                    ].map(f => (
+                                        <button key={f.id} onClick={() => setFilterPeriod(f.id as any)} className={`px-5 py-2 rounded-full text-[10px] font-bold uppercase tracking-wide whitespace-nowrap transition-all border ${filterPeriod === f.id ? 'bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 border-transparent shadow-md' : 'bg-transparent text-zinc-500 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700'}`}>{f.label}</button>
+                                    ))}
+                                    <div className="flex-1"></div>
+                                    <button onClick={exportCSV} className="w-9 h-9 flex items-center justify-center bg-white dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 rounded-xl border border-zinc-200 dark:border-zinc-700 hover:border-emerald-500 hover:text-emerald-500 transition-colors shadow-sm"><span className="material-icons-round text-sm">download</span></button>
+                                </div>
+                            </div>
                             {filteredRecords.length === 0 ? (
-                                <div className="text-center py-24 text-slate-300 dark:text-slate-700">
-                                    <div className="w-20 h-20 bg-slate-100 dark:bg-white/5 rounded-full flex items-center justify-center mx-auto mb-4">
-                                        <span className="material-icons-round text-4xl opacity-50 pointer-events-none">history_toggle_off</span>
-                                    </div>
-                                    <p className="font-bold text-slate-400 dark:text-slate-600">{t('hist_empty')}</p>
-                                    {searchTerm && <p className="text-xs mt-2 opacity-70">Intenta con otros términos.</p>}
+                                <div className="text-center py-20 opacity-50 flex flex-col items-center">
+                                    <div className="w-24 h-24 bg-zinc-100 dark:bg-zinc-800 rounded-full flex items-center justify-center mb-5"><span className="material-icons-round text-5xl text-zinc-300 dark:text-zinc-600">history</span></div>
+                                    <p className="text-sm text-zinc-500 dark:text-zinc-400 font-medium">{t('hist_empty')}</p>
                                 </div>
                             ) : (
-                                filteredRecords.map(record => {
-                                    const diff = record.netWeight - record.noteWeight;
-                                    const isDiff = Math.abs(diff) > TOLERANCE_KG;
-                                    const diffColor = isDiff 
-                                        ? (diff > 0 ? 'text-amber-600 bg-amber-50 dark:bg-amber-900/30 dark:text-amber-400' : 'text-red-600 bg-red-50 dark:bg-red-900/30 dark:text-red-400') 
-                                        : 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/30 dark:text-emerald-400';
-                                    const statusColor = isDiff ? 'bg-amber-500 shadow-amber-500/20' : 'bg-emerald-500 shadow-emerald-500/20';
-                                    
-                                    return (
-                                        <div key={record.id} className="bg-white dark:bg-gradient-to-br dark:from-slate-800 dark:to-slate-900 p-5 rounded-[2.5rem] shadow-sm dark:shadow-none border border-slate-100 dark:border-transparent relative overflow-hidden group transition-all hover:shadow-md">
-                                            
-                                            {/* Status Dot */}
-                                            <div className={`absolute left-5 top-6 w-3 h-3 rounded-full shadow-lg ${statusColor}`}></div>
-
-                                            <div className="pl-6">
-                                                {/* Card Header */}
-                                                <div className="flex justify-between items-start mb-3">
-                                                    <div>
-                                                        <div className="font-black text-slate-800 dark:text-white text-lg leading-tight tracking-tight">{record.supplier}</div>
-                                                        <div className="text-xs text-slate-500 dark:text-slate-400 font-medium flex items-center gap-2 mt-1">
-                                                            {record.product}
-                                                            {record.batch && (
-                                                                <span className="bg-slate-100 dark:bg-white/10 px-2 py-0.5 rounded-full text-[10px] font-mono text-slate-500 dark:text-slate-300">
-                                                                    L: {record.batch}
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                    <div className="text-right">
-                                                        <div className="text-xs font-bold text-slate-800 dark:text-white">
-                                                            {new Date(record.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                                                        </div>
-                                                        <div className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">
-                                                            {new Date(record.timestamp).toLocaleDateString()}
-                                                        </div>
-                                                    </div>
-                                                </div>
-
-                                                {/* Data Grid */}
-                                                <div className="bg-slate-50 dark:bg-black/20 rounded-2xl p-3 mb-3 grid grid-cols-3 gap-2 text-center relative">
-                                                    <div className="flex flex-col justify-center py-1">
-                                                        <span className="text-[8px] uppercase text-slate-400 dark:text-slate-500 font-bold mb-0.5 tracking-wider">Nota</span>
-                                                        <span className="font-mono font-bold text-slate-700 dark:text-slate-200 text-base">{record.noteWeight}<span className="text-[10px] text-slate-500 dark:text-slate-400 ml-0.5">kg</span></span>
-                                                    </div>
-                                                    
-                                                    <div className="flex flex-col justify-center py-1 border-l border-r border-slate-200 dark:border-slate-700/50">
-                                                        <span className="text-[8px] uppercase text-slate-400 dark:text-slate-500 font-bold mb-0.5 tracking-wider">Bruto</span>
-                                                        <span className="font-mono font-bold text-slate-700 dark:text-slate-200 text-base">{record.grossWeight}<span className="text-[10px] text-slate-500 dark:text-slate-400 ml-0.5">kg</span></span>
-                                                    </div>
-
-                                                    <div className="flex flex-col">
-                                                        <span className="text-[9px] uppercase text-slate-400 dark:text-slate-500 font-bold mb-1 tracking-wider">Tara</span>
-                                                        <div className="flex flex-col items-center justify-center gap-1">
-                                                            {/* Total - PROMINENTE */}
-                                                            <span className="font-mono font-black text-slate-700 dark:text-slate-100 text-lg leading-none">{record.taraTotal.toFixed(1)}<span className="text-xs text-slate-500 dark:text-slate-400 ml-0.5">kg</span></span>
-                                                            
-                                                            {/* Detalles - pequeño */}
-                                                            <div className="flex flex-col items-center gap-0.5 text-[10px] text-slate-500 dark:text-slate-400">
-                                                                {record.boxes && record.boxes.qty > 0 && (
-                                                                    <div className="flex items-center gap-0.5">
-                                                                        <span>📦</span>
-                                                                        <span className="font-medium">{record.boxes.qty} × {record.boxes.unitTara}g</span>
-                                                                    </div>
-                                                                )}
-                                                                {record.taraEmbalaje && record.taraEmbalaje.qty > 0 && (
-                                                                    <div className="flex items-center gap-0.5">
-                                                                        <span>📋</span>
-                                                                        <span className="font-medium">{record.taraEmbalaje.qty} × {record.taraEmbalaje.unitTara}g</span>
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-
-                                                {/* Result Footer */}
-                                                <div className="flex items-center justify-between">
-                                                    <div>
-                                                        <span className="text-[10px] uppercase text-slate-400 dark:text-slate-500 font-bold tracking-wider">{t('hist_liquid')}</span>
-                                                        <div className="font-mono font-black text-2xl text-slate-800 dark:text-white tracking-tighter">
-                                                            {record.netWeight.toFixed(2)} <span className="text-sm font-bold text-slate-400 dark:text-slate-500">kg</span>
-                                                        </div>
-                                                    </div>
-                                                    
-                                                    {/* Temperature & Expiration Badges */}
-                                                    <div className="flex flex-col items-end gap-1">
-                                                        {record.temperatureSuggestion && (
-                                                            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 dark:bg-blue-500/20 rounded-2xl">
-                                                                <span>❄️</span>
-                                                                <span className="font-bold text-sm text-blue-600 dark:text-blue-400">{record.temperatureSuggestion}°C</span>
-                                                            </div>
-                                                        )}
-                                                        {record.temperature && (
-                                                            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-50 dark:bg-cyan-500/20 rounded-2xl">
-                                                                <span>🌡️</span>
-                                                                <span className="font-bold text-sm text-cyan-600 dark:text-cyan-400">{record.temperature}°C</span>
-                                                            </div>
-                                                        )}
-                                                        {record.expirationDate && (
-                                                            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 dark:bg-amber-500/20 rounded-2xl">
-                                                                <span>📅</span>
-                                                                <span className="font-bold text-sm text-amber-600 dark:text-amber-400">{record.expirationDate}</span>
-                                                            </div>
-                                                        )}
-                                                        <div className={`px-4 py-2 rounded-2xl flex items-center justify-center ${diffColor}`}>
-                                                            <span className="font-mono font-bold text-base leading-none">
-                                                                {diff > 0 ? '+' : ''}{diff.toFixed(2)}
-                                                            </span>
-                                                        </div>
-                                                    </div>
-                                                    
-                                                    {/* Buttons Container */}
-                                                    <div className="flex items-center gap-2">
-                                                        {record.evidence && (
-                                                            <button 
-                                                                onClick={(e) => { e.stopPropagation(); setViewingEvidence(record.evidence!); }}
-                                                                className="w-10 h-10 bg-indigo-50 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-100 rounded-full flex items-center justify-center transition-all cursor-pointer"
-                                                                title="Ver Foto"
-                                                                type="button"
-                                                            >
-                                                                <span className="material-icons-round text-lg pointer-events-none">image</span>
-                                                            </button>
-                                                        )}
-
-                                                        <button 
-                                                            onClick={(e) => { e.stopPropagation(); openWhatsappModal(record); }}
-                                                            className="w-10 h-10 bg-slate-100 dark:bg-white/10 hover:bg-green-100 dark:hover:bg-green-900/30 text-slate-400 dark:text-slate-300 hover:text-green-600 dark:hover:text-green-400 rounded-full flex items-center justify-center transition-all cursor-pointer"
-                                                            type="button"
-                                                        >
-                                                            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" className="pointer-events-none"><path d="M12.031 6.172c-3.181 0-5.767 2.586-5.768 5.766-.001 1.298.38 2.27 1.019 3.287l-.711 2.592 2.654-.696c1.001.572 2.09.893 3.182.893h.004c3.178 0 5.767-2.587 5.767-5.766.001-3.185-2.585-5.776-5.767-5.776zm6.868 8.974c-1.686 2.811-4.721 4.397-7.989 4.397h-.006c-1.42 0-2.822-.376-4.079-1.107l-4.529 1.189 1.218-4.414c-.808-1.319-1.236-2.827-1.235-4.383.004-4.543 3.702-8.24 8.241-8.24 2.2 0 4.27 1.171 5.824 2.726 1.554 1.555 2.544 3.749 2.548 6.096.002 1.259-.288 2.457-.865 3.526l.872.21z"/></svg>
-                                                        </button>
-                                                    </div>
-                                                </div>
-
-                                                {/* AI Analysis Section */}
-                                                {record.aiAnalysis && (
-                                                    <div className="mt-4 pt-4 border-t border-slate-100 dark:border-white/5 animate-fade-in">
-                                                        <div className="flex gap-3 items-start text-xs text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-black/20 p-3 rounded-2xl">
-                                                            <div className="w-6 h-6 rounded-full bg-indigo-100 dark:bg-indigo-500/20 flex items-center justify-center shrink-0">
-                                                                <span className="material-icons-round text-sm text-indigo-500 dark:text-indigo-400 pointer-events-none">smart_toy</span>
-                                                            </div>
-                                                            <div className="leading-relaxed opacity-90 pt-1">
-                                                                {record.aiAnalysis}
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                    );
-                                })
+                                <div className="space-y-4">
+                                    {filteredRecords.map(record => <HistoryItem key={record.id} record={record} onDelete={handleDeleteRecord} onShare={handleShare} onViewImage={setViewImage} />)}
+                                </div>
+                            )}
+                             {records.length > 0 && (
+                                <div className="mt-10 text-center">
+                                    <button onClick={() => { if(confirm(t('msg_confirm_delete_all'))) { clearAllRecords(); setRecords([]); } }} className="text-red-400 hover:text-red-600 text-xs font-bold opacity-70 hover:opacity-100 transition-opacity uppercase tracking-widest px-6 py-3 hover:bg-red-50 dark:hover:bg-red-900/10 rounded-xl">{t('btn_delete_all_history')}</button>
+                                </div>
                             )}
                         </div>
                     )}
                 </div>
             </main>
 
-            {/* Floating Bottom Nav */}
-            <nav className="fixed bottom-6 left-6 right-6 h-20 bg-white/90 dark:bg-slate-900/60 backdrop-blur-2xl border border-white/20 dark:border-transparent shadow-2xl shadow-slate-400/30 dark:shadow-black/60 rounded-full z-40 flex items-center justify-evenly px-2 transition-all duration-300">
-                 <button 
-                    onClick={() => setActiveTab('weigh')}
-                    className={`flex items-center justify-center gap-3 px-8 py-4 rounded-full transition-all duration-300 ${activeTab === 'weigh' ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-lg scale-105' : 'text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300'}`}
-                    type="button"
-                >
-                    <span className="material-icons-round text-2xl pointer-events-none">scale</span>
-                    {activeTab === 'weigh' && <span className="text-sm font-bold pointer-events-none">{t('tab_weigh')}</span>}
+            {/* DYNAMIC NAVIGATION ISLAND */}
+            <nav className="fixed bottom-8 left-1/2 transform -translate-x-1/2 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-2xl border border-white/20 dark:border-white/10 rounded-full shadow-glow p-2 flex items-center gap-2 z-50 max-w-[95%] overflow-hidden transition-all duration-300 ring-1 ring-black/5">
+                <button onClick={() => { setActiveTab('weigh'); trackEvent('nav_click', { tab: 'weigh' }); }} className={`h-14 px-8 rounded-full flex items-center justify-center gap-2 transition-all duration-300 ${activeTab === 'weigh' ? 'bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 shadow-lg font-bold' : 'text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800'}`}>
+                    <span className="material-icons-round text-2xl">scale</span>
+                    {activeTab === 'weigh' && <span className="text-sm animate-fade-in whitespace-nowrap">{t('tab_weigh')}</span>}
                 </button>
-                
-                <button 
-                    onClick={() => setActiveTab('history')}
-                    className={`flex items-center justify-center gap-3 px-8 py-4 rounded-full transition-all duration-300 ${activeTab === 'history' ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-lg scale-105' : 'text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300'}`}
-                    type="button"
-                >
-                    <span className="material-icons-round text-2xl pointer-events-none">receipt_long</span>
-                    {activeTab === 'history' && <span className="text-sm font-bold pointer-events-none">{t('tab_history')}</span>}
+                <button onClick={() => { setActiveTab('history'); trackEvent('nav_click', { tab: 'history' }); }} className={`h-14 px-8 rounded-full flex items-center justify-center gap-2 transition-all duration-300 ${activeTab === 'history' ? 'bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 shadow-lg font-bold' : 'text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800'}`}>
+                    <span className="material-icons-round text-2xl">history</span>
+                     {activeTab === 'history' && <span className="text-sm animate-fade-in whitespace-nowrap">{t('tab_history')}</span>}
                 </button>
+                {activeTab === 'weigh' && (
+                    <>
+                        <div className="w-px h-8 bg-zinc-200 dark:bg-zinc-700 mx-1.5"></div>
+                    </>
+                )}
             </nav>
-
-            {/* Global Weighting Chat (only visible in history tab) */}
-            {activeTab === 'history' && (
-                <GlobalWeighingChat 
-                    isVisible={globalChatOpen}
-                    onToggle={() => setGlobalChatOpen(!globalChatOpen)}
-                    records={records}
-                />
-            )}
+            <InstallPrompt className="fixed bottom-24 left-4 right-4 z-40 md:left-auto md:right-4 md:w-80 md:bottom-4" />
         </div>
     );
 };
 
-const App: React.FC = () => {
-    return (
-        <LanguageProvider>
-            <ToastProvider>
-                <MainLayout />
-            </ToastProvider>
-        </LanguageProvider>
-    );
-};
-
-export default App;
+export default () => (
+    <LanguageProvider>
+        <ToastProvider>
+            <App />
+        </ToastProvider>
+    </LanguageProvider>
+);
