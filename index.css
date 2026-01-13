@@ -18,12 +18,43 @@ html.dark body {
 .input-rounded { @apply rounded-2xl; }
 .btn-rounded { @apply rounded-2xl; }
 
-/* Superficie Inputs */
+/* Superficie Inputs - Large variant */
 .input-superficie {
   @apply bg-zinc-100 dark:bg-zinc-900 
          border-0 ring-0 
          focus:ring-2 focus:ring-zinc-400 dark:focus:ring-zinc-600
          transition-all duration-200;
+}
+
+.input-superficie-lg {
+  @apply input-superficie py-3 px-4 text-base rounded-xl;
+}
+
+/* Surface Cards */
+.surface-card {
+  @apply bg-white dark:bg-slate-800
+         border border-zinc-100 dark:border-zinc-700
+         rounded-2xl p-4 shadow-sm hover:shadow-md
+         transition-all duration-200;
+}
+
+.surface-card-lg {
+  @apply surface-card p-6;
+}
+
+.surface-card-hover {
+  @apply surface-card hover:bg-zinc-50 dark:hover:bg-slate-700
+         hover:border-zinc-200 dark:hover:border-zinc-600;
+}
+
+/* Input Groups */
+.input-label {
+  @apply block text-xs font-bold uppercase tracking-wider
+         text-slate-600 dark:text-slate-400 mb-2;
+}
+
+.input-group {
+  @apply flex flex-col gap-2;
 }
 
 /* Assistant Bubble Animations */
@@ -37,14 +68,38 @@ html.dark body {
   to { opacity: 1; transform: translateY(0); }
 }
 
+@keyframes slideLR {
+  from { opacity: 0; transform: translateX(-10px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
 @keyframes pulse-subtle {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.8; }
 }
 
+@keyframes shimmer {
+  0% { background-position: -1000px 0; }
+  100% { background-position: 1000px 0; }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+
+@keyframes breathe {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.8; transform: scale(1.02); }
+}
+
 .animate-fadeInScale { animation: fadeInScale 0.3s ease-out; }
 .animate-slideUp { animation: slideUp 0.4s ease-out; }
+.animate-slideLR { animation: slideLR 0.3s ease-out; }
 .animate-pulse-subtle { animation: pulse-subtle 2s ease-in-out infinite; }
+.animate-shimmer { animation: shimmer 2s infinite; }
+.animate-float { animation: float 3s ease-in-out infinite; }
+.animate-breathe { animation: breathe 2s ease-in-out infinite; }
 
 /* Swipe Carousel Support */
 .carousel-container {
@@ -56,11 +111,115 @@ html.dark body {
   transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* Badge Styling */
-.badge-success { @apply bg-emerald-100 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-100; }
-.badge-warning { @apply bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-100; }
-.badge-danger { @apply bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-100; }
-.badge-info { @apply bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-100; }
+/* Badge Styling - All variants */
+.badge-success { @apply bg-emerald-100 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-100 px-2.5 py-1 rounded-full text-xs font-bold; }
+.badge-warning { @apply bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-100 px-2.5 py-1 rounded-full text-xs font-bold; }
+.badge-danger { @apply bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-100 px-2.5 py-1 rounded-full text-xs font-bold; }
+.badge-info { @apply bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-100 px-2.5 py-1 rounded-full text-xs font-bold; }
+.badge-cool { @apply bg-cyan-100 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-200 px-2.5 py-1 rounded-full text-xs font-bold; }
+
+.badge-xs { @apply px-2 py-0.5 text-xs rounded-full font-semibold; }
+.badge-sm { @apply px-2.5 py-1 text-xs rounded-full font-bold; }
+
+/* Primary Buttons */
+.btn-primary {
+  @apply bg-slate-900 dark:bg-white text-white dark:text-slate-900 
+         py-3 px-6 rounded-2xl font-bold text-sm
+         shadow-md hover:shadow-lg hover:scale-[1.02] active:scale-95
+         transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed;
+}
+
+.btn-primary-dark {
+  @apply bg-slate-800 dark:bg-slate-700 text-white
+         py-3 px-6 rounded-2xl font-bold text-sm
+         shadow-md hover:shadow-lg hover:scale-[1.02] active:scale-95
+         transition-all duration-200;
+}
+
+.btn-secondary {
+  @apply bg-zinc-100 dark:bg-zinc-900 text-slate-900 dark:text-white
+         py-3 px-6 rounded-2xl font-bold text-sm
+         shadow-sm hover:shadow-md hover:scale-[1.02] active:scale-95
+         transition-all duration-200;
+}
+
+/* Status Indicators */
+.status-ok { @apply text-emerald-600 dark:text-emerald-400; }
+.status-error { @apply text-red-600 dark:text-red-400; }
+.status-warning { @apply text-amber-600 dark:text-amber-400; }
+.status-pending { @apply text-slate-600 dark:text-slate-400; }
+
+.status-indicator {
+  @apply inline-flex items-center justify-center w-2 h-2 rounded-full;
+}
+
+.status-indicator-ok { @apply bg-emerald-500; }
+.status-indicator-error { @apply bg-red-500; }
+.status-indicator-warning { @apply bg-amber-500; }
+.status-indicator-pending { @apply bg-slate-300 dark:bg-slate-600; }
+
+/* Gradient Backgrounds */
+.bg-gradient-success {
+  @apply bg-gradient-to-r from-emerald-500 to-emerald-600;
+}
+
+.bg-gradient-warning {
+  @apply bg-gradient-to-r from-amber-500 to-amber-600;
+}
+
+.bg-gradient-danger {
+  @apply bg-gradient-to-r from-red-500 to-red-600;
+}
+
+.bg-gradient-cool {
+  @apply bg-gradient-to-r from-cyan-500 to-blue-600;
+}
+
+/* Focus Ring Styling */
+.focus-ring-custom {
+  @apply focus:outline-none focus:ring-2 focus:ring-offset-2
+         focus:ring-slate-400 dark:focus:ring-slate-600;
+}
+
+/* Scrollbar Styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #d4d4d8;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #a1a1a6;
+}
+
+html.dark ::-webkit-scrollbar-thumb {
+  background: #52525b;
+}
+
+html.dark ::-webkit-scrollbar-thumb:hover {
+  background: #71717a;
+}
+
+/* User Select */
+.user-select-none { @apply select-none; }
+.user-select-text { @apply select-text; }
 
 /* App-specific overrides */
 .container { max-width: 960px; margin: 0 auto; padding: 16px; }
+
+/* Responsive Utilities */
+@media (max-width: 640px) {
+  .sm-hidden { @apply hidden; }
+}
+
+@media (min-width: 641px) {
+  .sm-block { @apply block; }
+}
