@@ -76,6 +76,11 @@ export const WeighingForm: React.FC = () => {
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [isReadingImage, setIsReadingImage] = useState(false);
     const [aiAlert, setAiAlert] = useState<string | null>(null);
+    
+    // Smart Tips Carousel
+    const [smartTips, setSmartTips] = useState<Array<{type: string; title: string; content: string}>>([]);
+    const [currentTipIndex, setCurrentTipIndex] = useState(0);
+    const [autoRotateTimer, setAutoRotateTimer] = useState<NodeJS.Timeout | null>(null);
 
     // Track active sections for styling
     const [activeSection, setActiveSection] = useState<'identity' | 'weights' | 'tara' | 'evidence' | null>(null);
@@ -171,6 +176,116 @@ export const WeighingForm: React.FC = () => {
     const grossWeightParsed = parseGrossWeightInput(grossWeight);
     const netWeight = (grossWeightParsed.total || 0) - totalTara;
     const difference = netWeight - (Number(noteWeight) || 0);
+
+    // --- HELPER: Generate Smart Tips (Dynamic Carousel) ---
+    const generateSmartTips = () => {
+        const tips: Array<{type: string; title: string; content: string}> = [];
+        
+        // 1. CRITICAL ALERTS (Highest Priority)
+        if (expirationDate) {
+            const productType = getProductType(supplier, product) || temperature;
+            const expAlert = checkExpirationRisk(expirationDate, productType);
+            if (expAlert) {
+                tips.push({
+                    type: 'alert',
+                    title: t('tip_title_alert'),
+                    content: expAlert
+                });
+            }
+        }
+        
+        // Weight difference alert
+        if (grossWeight && noteWeight && Math.abs(difference) > TOLERANCE_KG) {
+            tips.push({
+                type: 'alert',
+                title: t('tip_title_alert'),
+                content: difference > 0 
+                    ? `⚠️ SOBRA: ${Math.abs(difference).toFixed(2)}kg`
+                    : `⚠️ FALTA: ${Math.abs(difference).toFixed(2)}kg`
+            });
+        }
+        
+        // 2. LOGISTICS SUMMARY (When weights are entered)
+        if (batch && noteWeight && grossWeight) {
+            tips.push({
+                type: 'logistics',
+                title: t('tip_title_logistics'),
+                content: t('tip_batch_info', { 
+                    batch: batch, 
+                    mfg: productionDate || '—' 
+                }) + ` | ${t('tip_net_calculated', { net: netWeight.toFixed(2) })}`
+            });
+        } else if (batch || productionDate) {
+            tips.push({
+                type: 'logistics',
+                title: t('tip_title_logistics'),
+                content: t('tip_batch_info', { 
+                    batch: batch || '—', 
+                    mfg: productionDate || '—' 
+                })
+            });
+        }
+        
+        // 3. STORAGE ADVICE (Based on product type)
+        if (temperature || product) {
+            const prodType = temperature || getProductType(supplier, product);
+            if (prodType?.toLowerCase().includes('congel')) {
+                tips.push({
+                    type: 'storage',
+                    title: t('tip_title_storage'),
+                    content: t('tip_frozen_store')
+                });
+            } else if (prodType?.toLowerCase().includes('resfri') || prodType?.toLowerCase().includes('frio')) {
+                tips.push({
+                    type: 'storage',
+                    title: t('tip_title_storage'),
+                    content: t('tip_refrigerated_store')
+                });
+            } else if (prodType?.toLowerCase().includes('fresco')) {
+                tips.push({
+                    type: 'storage',
+                    title: t('tip_title_storage'),
+                    content: t('tip_fresh_store')
+                });
+            }
+        }
+        
+        // 4. DEFAULT/ASSISTANT MESSAGE (Fallback)
+        if (tips.length === 0) {
+            tips.push({
+                type: 'assistant',
+                title: t('tip_title_assistant'),
+                content: assistantMessage
+            });
+        }
+        
+        setSmartTips(tips);
+        setCurrentTipIndex(0);
+    };
+    
+    // Auto-update Smart Tips when form changes
+    useEffect(() => {
+        generateSmartTips();
+    }, [supplier, product, batch, expirationDate, productionDate, temperature, noteWeight, grossWeight, aiAlert, language]);
+    
+    // Auto-rotate Smart Tips (slower during analysis)
+    useEffect(() => {
+        if (smartTips.length <= 1) return;
+        
+        // Clear existing timer
+        if (autoRotateTimer) clearTimeout(autoRotateTimer);
+        
+        // Slower rotation during image analysis
+        const rotationSpeed = isAnalyzing || isReadingImage ? 8000 : 5000;
+        
+        const timer = setTimeout(() => {
+            setCurrentTipIndex(prev => (prev + 1) % smartTips.length);
+        }, rotationSpeed);
+        
+        setAutoRotateTimer(timer);
+        
+        return () => clearTimeout(timer);
+    }, [smartTips, currentTipIndex, isAnalyzing, isReadingImage]);
 
     const updateAssistantVoice = () => {
         if (!supplier) {
@@ -1095,6 +1210,76 @@ RESPONDE SOLO UN NÚMERO (ej: 18 o 12), sin explicación.`;
                      )}
                 </div>
             </div>
+
+            {/* ✨ Smart Tips Carousel */}
+            {smartTips.length > 0 && (
+                <div className={`rounded-[2rem] border transition-all duration-300 overflow-hidden shadow-md ${
+                    smartTips[currentTipIndex]?.type === 'alert' 
+                        ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800' 
+                        : smartTips[currentTipIndex]?.type === 'logistics'
+                        ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
+                        : smartTips[currentTipIndex]?.type === 'storage'
+                        ? 'bg-cyan-50 dark:bg-cyan-900/20 border-cyan-200 dark:border-cyan-800'
+                        : 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800'
+                }`}>
+                    <div className="p-4">
+                        {/* Tip Header */}
+                        <div className="flex items-center justify-between mb-2">
+                            <h3 className={`text-sm font-bold ${
+                                smartTips[currentTipIndex]?.type === 'alert' 
+                                    ? 'text-red-700 dark:text-red-200' 
+                                    : smartTips[currentTipIndex]?.type === 'logistics'
+                                    ? 'text-blue-700 dark:text-blue-200'
+                                    : smartTips[currentTipIndex]?.type === 'storage'
+                                    ? 'text-cyan-700 dark:text-cyan-200'
+                                    : 'text-amber-700 dark:text-amber-200'
+                            }`}>
+                                {smartTips[currentTipIndex]?.title}
+                            </h3>
+                            {smartTips.length > 1 && (
+                                <span className="text-[10px] opacity-60 font-mono">
+                                    {currentTipIndex + 1}/{smartTips.length}
+                                </span>
+                            )}
+                        </div>
+                        
+                        {/* Tip Content */}
+                        <p className={`text-sm leading-relaxed ${
+                            smartTips[currentTipIndex]?.type === 'alert' 
+                                ? 'text-red-800 dark:text-red-100' 
+                                : smartTips[currentTipIndex]?.type === 'logistics'
+                                ? 'text-blue-800 dark:text-blue-100'
+                                : smartTips[currentTipIndex]?.type === 'storage'
+                                ? 'text-cyan-800 dark:text-cyan-100'
+                                : 'text-amber-800 dark:text-amber-100'
+                        }`}>
+                            {smartTips[currentTipIndex]?.content}
+                        </p>
+                        
+                        {/* Navigation Dots */}
+                        {smartTips.length > 1 && (
+                            <div className="flex gap-2 mt-3 justify-center">
+                                {smartTips.map((_, idx) => (
+                                    <button
+                                        key={idx}
+                                        onClick={() => {
+                                            setCurrentTipIndex(idx);
+                                            // Reset auto-rotate timer
+                                            if (autoRotateTimer) clearTimeout(autoRotateTimer);
+                                        }}
+                                        className={`h-2 rounded-full transition-all ${
+                                            idx === currentTipIndex 
+                                                ? 'w-6 bg-current opacity-75' 
+                                                : 'w-2 opacity-30 hover:opacity-50'
+                                        }`}
+                                        aria-label={`Tip ${idx + 1}`}
+                                    />
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
 
             {/* 1. Evidence Section (Compact & Optimized) */}
             <div 

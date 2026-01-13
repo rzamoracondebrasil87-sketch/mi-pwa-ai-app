@@ -111,6 +111,24 @@ const translations = {
         update_available: 'Nova versão disponível',
         btn_update: 'Atualizar',
         
+        // Smart Tips Carousel
+        tip_title_alert: '🚨 Alerta Crítico',
+        tip_title_logistics: '📊 Resumo Logístico',
+        tip_title_storage: '🧊 Conselho de Armazenamento',
+        tip_title_assistant: '💡 Dica da IA',
+        
+        tip_expired: '⚠️ VENCIDO - Não confirme',
+        tip_critical_days: '⚠️ CRÍTICO: {days} dias',
+        tip_critical_today: '⚠️ CRÍTICO: Vence HOJE ou AMANHÃ',
+        
+        tip_batch_info: 'Lote: {batch} | Fab: {mfg}',
+        tip_tara_used: 'Tara padrão aplicada',
+        tip_net_calculated: 'Líquido: {net}g',
+        
+        tip_frozen_store: '❄️ Armazenar em congelador (-18°C)',
+        tip_refrigerated_store: '🧊 Manter refrigerado (2-8°C)',
+        tip_fresh_store: '🌡️ Ambiente fresco (até 15°C)',
+        
         // Logic
         ai_prompt_lang: 'Português'
     },
@@ -208,6 +226,25 @@ const translations = {
         btn_not_now: 'Ahora no',
         update_available: 'Nueva versión disponible',
         btn_update: 'Actualizar',
+        
+        // Smart Tips Carousel
+        tip_title_alert: '🚨 Alerta Crítico',
+        tip_title_logistics: '📊 Resumen Logístico',
+        tip_title_storage: '🧊 Consejo de Almacenamiento',
+        tip_title_assistant: '💡 Tip de la IA',
+        
+        tip_expired: '⚠️ VENCIDO - No confirmes',
+        tip_critical_days: '⚠️ CRÍTICO: {days} días',
+        tip_critical_today: '⚠️ CRÍTICO: Vence HOY o MAÑANA',
+        
+        tip_batch_info: 'Lote: {batch} | Fab: {mfg}',
+        tip_tara_used: 'Tara estándar aplicada',
+        tip_net_calculated: 'Líquido: {net}g',
+        
+        tip_frozen_store: '❄️ Almacenar en congelador (-18°C)',
+        tip_refrigerated_store: '🧊 Mantener refrigerado (2-8°C)',
+        tip_fresh_store: '🌡️ Ambiente fresco (hasta 15°C)',
+        
         ai_prompt_lang: 'Español'
     },
     en: {
@@ -304,6 +341,25 @@ const translations = {
         btn_not_now: 'Not now',
         update_available: 'New version available',
         btn_update: 'Update',
+        
+        // Smart Tips Carousel
+        tip_title_alert: '🚨 Critical Alert',
+        tip_title_logistics: '📊 Logistics Summary',
+        tip_title_storage: '🧊 Storage Advice',
+        tip_title_assistant: '💡 AI Tip',
+        
+        tip_expired: '⚠️ EXPIRED - Do not confirm',
+        tip_critical_days: '⚠️ CRITICAL: {days} days',
+        tip_critical_today: '⚠️ CRITICAL: Expires TODAY or TOMORROW',
+        
+        tip_batch_info: 'Batch: {batch} | Mfg: {mfg}',
+        tip_tara_used: 'Standard tara applied',
+        tip_net_calculated: 'Net: {net}g',
+        
+        tip_frozen_store: '❄️ Store in freezer (-18°C)',
+        tip_refrigerated_store: '🧊 Keep refrigerated (2-8°C)',
+        tip_fresh_store: '🌡️ Cool environment (up to 15°C)',
+        
         ai_prompt_lang: 'English'
     }
 };
