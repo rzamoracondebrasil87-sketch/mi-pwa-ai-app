@@ -64,6 +64,10 @@ export const WeighingForm: React.FC = () => {
     // Refs for auto-focus and file inputs
     const noteInputRef = useRef<HTMLInputElement>(null);
     const grossInputRef = useRef<HTMLInputElement>(null);
+    const boxQtyRef = useRef<HTMLInputElement>(null);
+    const boxTaraRef = useRef<HTMLInputElement>(null);
+    const boxQtyEmbalajeRef = useRef<HTMLInputElement>(null);
+    const boxTaraEmbalajeRef = useRef<HTMLInputElement>(null);
     const cameraInputRef = useRef<HTMLInputElement>(null);
     const galleryInputRef = useRef<HTMLInputElement>(null);
 
@@ -1600,9 +1604,16 @@ RESPONDE SOLO UN NÚMERO (ej: 18 o 12), sin explicación.`;
                                 <div className="bg-slate-50 dark:bg-black/20 rounded-2xl p-2.5 border border-slate-100 dark:border-transparent">
                                     <label className="text-[9px] text-slate-400 dark:text-slate-500 font-bold uppercase mb-1 block text-center">{t('lbl_unit_weight')}</label>
                                     <input 
+                                        ref={boxTaraRef}
                                         type="number" 
                                         value={boxTara} 
-                                        onChange={e => setBoxTara(e.target.value)} 
+                                        onChange={e => setBoxTara(e.target.value)}
+                                        onBlur={() => {
+                                            // Auto-focus to quantity when tara is filled
+                                            if (boxTara && !boxQty) {
+                                                setTimeout(() => boxQtyRef.current?.focus(), 100);
+                                            }
+                                        }}
                                         className="w-full bg-white dark:bg-slate-800 border-none rounded-lg px-2 py-2 text-sm focus:ring-4 focus:ring-primary-100 dark:focus:ring-primary-900/20 outline-none transition-all font-mono font-bold text-center text-slate-800 dark:text-white shadow-sm" 
                                         placeholder="0" 
                                     />
@@ -1610,9 +1621,25 @@ RESPONDE SOLO UN NÚMERO (ej: 18 o 12), sin explicación.`;
                                 <div className="bg-slate-50 dark:bg-black/20 rounded-2xl p-2.5 border border-slate-100 dark:border-transparent">
                                     <label className="text-[9px] text-slate-400 dark:text-slate-500 font-bold uppercase mb-1 block text-center">{t('lbl_qty')}</label>
                                     <input 
+                                        ref={boxQtyRef}
                                         type="number" 
                                         value={boxQty} 
-                                        onChange={e => setBoxQty(e.target.value)} 
+                                        onChange={e => setBoxQty(e.target.value)}
+                                        onBlur={() => {
+                                            // When quantity is filled, trigger auto-collapse of tara section
+                                            if (boxQty && showBoxes) {
+                                                const timer = setTimeout(() => {
+                                                    setShowBoxes(false);
+                                                    setActiveSection('weights');
+                                                    if (!noteWeight) {
+                                                        noteInputRef.current?.focus();
+                                                    } else {
+                                                        grossInputRef.current?.focus();
+                                                    }
+                                                }, 500);
+                                                return () => clearTimeout(timer);
+                                            }
+                                        }}
                                         className="w-full bg-white dark:bg-slate-800 border-none rounded-lg px-2 py-2 text-sm focus:ring-4 focus:ring-primary-100 dark:focus:ring-primary-900/20 outline-none transition-all font-mono font-bold text-center text-slate-800 dark:text-white shadow-sm" 
                                         placeholder="0" 
                                     />
@@ -1630,9 +1657,16 @@ RESPONDE SOLO UN NÚMERO (ej: 18 o 12), sin explicación.`;
                                 <div className="bg-slate-50 dark:bg-black/20 rounded-2xl p-2.5 border border-slate-100 dark:border-transparent">
                                     <label className="text-[9px] text-slate-400 dark:text-slate-500 font-bold uppercase mb-1 block text-center">{t('lbl_unit_weight')}</label>
                                     <input 
+                                        ref={boxTaraEmbalajeRef}
                                         type="number" 
                                         value={boxTaraEmbalaje} 
-                                        onChange={e => setBoxTaraEmbalaje(e.target.value)} 
+                                        onChange={e => setBoxTaraEmbalaje(e.target.value)}
+                                        onBlur={() => {
+                                            // Auto-focus to quantity when tara embalaje is filled
+                                            if (boxTaraEmbalaje && !boxQtyEmbalaje) {
+                                                setTimeout(() => boxQtyEmbalajeRef.current?.focus(), 100);
+                                            }
+                                        }}
                                         className="w-full bg-white dark:bg-slate-800 border-none rounded-lg px-2 py-2 text-sm focus:ring-4 focus:ring-primary-100 dark:focus:ring-primary-900/20 outline-none transition-all font-mono font-bold text-center text-slate-800 dark:text-white shadow-sm" 
                                         placeholder="0" 
                                     />
@@ -1640,9 +1674,25 @@ RESPONDE SOLO UN NÚMERO (ej: 18 o 12), sin explicación.`;
                                 <div className="bg-slate-50 dark:bg-black/20 rounded-2xl p-2.5 border border-slate-100 dark:border-transparent">
                                     <label className="text-[9px] text-slate-400 dark:text-slate-500 font-bold uppercase mb-1 block text-center">{t('lbl_qty')}</label>
                                     <input 
+                                        ref={boxQtyEmbalajeRef}
                                         type="number" 
                                         value={boxQtyEmbalaje} 
-                                        onChange={e => setBoxQtyEmbalaje(e.target.value)} 
+                                        onChange={e => setBoxQtyEmbalaje(e.target.value)}
+                                        onBlur={() => {
+                                            // When quantity embalaje is filled, trigger collapse
+                                            if (boxQtyEmbalaje && showBoxes) {
+                                                const timer = setTimeout(() => {
+                                                    setShowBoxes(false);
+                                                    setActiveSection('weights');
+                                                    if (!noteWeight) {
+                                                        noteInputRef.current?.focus();
+                                                    } else {
+                                                        grossInputRef.current?.focus();
+                                                    }
+                                                }, 500);
+                                                return () => clearTimeout(timer);
+                                            }
+                                        }}
                                         className="w-full bg-white dark:bg-slate-800 border-none rounded-lg px-2 py-2 text-sm focus:ring-4 focus:ring-primary-100 dark:focus:ring-primary-900/20 outline-none transition-all font-mono font-bold text-center text-slate-800 dark:text-white shadow-sm" 
                                         placeholder="0" 
                                     />
