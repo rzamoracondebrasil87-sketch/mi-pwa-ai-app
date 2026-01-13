@@ -157,6 +157,10 @@ export const storeImageReading = (reading: ImageReading) => {
             ...(existing?.readings || []),
             reading
         ]),
+        commonProductType: calculateCommonType([
+            ...(existing?.readings || []),
+            reading
+        ]),
         lastReading: reading.timestamp,
         readings: [
             reading,
@@ -199,6 +203,26 @@ function calculateExpirationDays(readings: ImageReading[]): number {
     
     if (diffs.length === 0) return 0;
     return Math.round(diffs.reduce((a, b) => a + b, 0) / diffs.length);
+}
+
+/**
+ * Calcula el tipo de producto más común (congelado, resfriado, fresco)
+ */
+function calculateCommonType(readings: ImageReading[]): string {
+    const types = readings
+        .map(r => r.extractedData.type)
+        .filter((t): t is string => typeof t === 'string' && t !== 'indeterminado');
+    
+    if (types.length === 0) return 'indeterminado';
+    
+    // Contar ocurrencias de cada tipo
+    const counts = types.reduce((acc, type) => {
+        acc[type] = (acc[type] || 0) + 1;
+        return acc;
+    }, {} as Record<string, number>);
+    
+    // Retornar el tipo más frecuente
+    return Object.entries(counts).sort(([,a], [,b]) => b - a)[0][0];
 }
 
 /**
@@ -265,6 +289,16 @@ export const getRecentReadings = (supplier: string, product: string, limit = 10)
     return (kb.imageReadings || [])
         .filter(r => r.supplier === supplier && r.product === product)
         .slice(0, limit);
+};
+
+/**
+ * Obtiene el tipo de producto aprendido (congelado, resfriado, fresco)
+ */
+export const getProductType = (supplier: string, product: string): string => {
+    const kb = getKnowledgeBase();
+    const patternKey = `${supplier}::${product}`;
+    const pattern = kb.learningPatterns?.[patternKey];
+    return pattern?.commonProductType || 'indeterminado';
 };
 
 export const getKnowledgeBase = (): KnowledgeBase => {

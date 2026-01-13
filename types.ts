@@ -65,6 +65,7 @@ export interface LearningPattern {
     averageTemperature: number;
     averageGrossWeight: number;
     commonExpirationDays: number; // Dias típicos desde producción a vencimiento
+    commonProductType: string; // congelado|resfriado|fresco|indeterminado
     lastReading: number; // timestamp
     readings: ImageReading[]; // Last 50 readings for this pattern
 }

@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { createWorker } from 'tesseract.js';
-import { saveRecord, predictData, getKnowledgeBase, getLastRecordBySupplier } from '../services/storageService';
+import { saveRecord, predictData, getKnowledgeBase, getLastRecordBySupplier, getProductType } from '../services/storageService';
 import { trackEvent } from '../services/analyticsService';
 import { useTranslation } from '../services/i18n';
 import { useToast } from './Toast';
@@ -201,8 +201,8 @@ export const WeighingForm: React.FC = () => {
         }
     };
 
-    // --- HELPER: Expiration Risk Check ---
-    const checkExpirationRisk = (dateStr: string): string | null => {
+    // --- HELPER: Expiration Risk Check (Product Type Aware) ---
+    const checkExpirationRisk = (dateStr: string, productType?: string): string | null => {
         if (!dateStr) return null;
         
         // Handle DD/MM/YYYY or DD.MM.YY or DD-MM-YYYY
@@ -227,14 +227,34 @@ export const WeighingForm: React.FC = () => {
         const diffTime = expDate.getTime() - today.getTime();
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-        // Only alert if VERY close to expiration (less than 7 days)
-        // For products with long shelf life (months/years), don't alert
+        // Always alert if expired
         if (diffDays < 0) return `⚠️ VENCIDO hace ${Math.abs(diffDays)} días`;
-        if (diffDays <= 7) return `⚠️ CRÍTICO: Vence en ${diffDays} días`;
-        
-        // For any date further away (>7 days), don't alert
-        // This avoids false alarms for frozen/cured products with long shelf life
-        return null;
+
+        // Alert strategy based on product type:
+        switch (productType?.toLowerCase()) {
+            case 'congelado':
+                // Frozen products have 1+ year shelf life - only alert if expired
+                // Short dates (even 30 days) are normal for frozen goods
+                return null;
+            
+            case 'resfriado':
+                // Refrigerated products have short shelf life (7-30 days)
+                // Only alert if less than 2 days
+                if (diffDays <= 2) return `⚠️ CRÍTICO: Vence en ${diffDays} días`;
+                return null;
+            
+            case 'fresco':
+                // Fresh products may have very short life (1-3 days)
+                // Alert if less than 1 day
+                if (diffDays <= 1) return `⚠️ CRÍTICO: Vence HOY o MAÑANA`;
+                return null;
+            
+            default:
+                // Unknown type - use conservative approach
+                // Alert if less than 7 days remaining
+                if (diffDays <= 7) return `⚠️ PRÓXIMO A VENCER: ${diffDays} días`;
+                return null;
+        }
     };
 
     const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -579,7 +599,8 @@ RESPONDE SOLO UN NÚMERO ENTRE 2 Y 25 (ej: 15), sin explicación, sin símbolo �
 
         // ==================== FEEDBACK MESSAGE ====================
         if (foundData) {
-            const riskMsg = checkExpirationRisk(foundExpiration);
+            const productType = supplier && product ? getProductType(supplier, product) : undefined;
+            const riskMsg = checkExpirationRisk(foundExpiration, productType);
             const confidenceMsg = ocrData.confidence >= 75 ? "✅ Muy confiable" : ocrData.confidence >= 50 ? "⚠️ Revisar" : "❓ Baja confianza";
             
             // Build AI message with temperature info
@@ -751,7 +772,9 @@ Analiza con cuidado, no rápido.`;
                     if (data.peso_liquido_kg) parts.push(`${data.peso_liquido_kg}kg neto`);
                     if (data.validaciones) parts.push(`⚠️ ${data.validaciones}`);
 
-                    const riskMsg = data.data_validade && data.data_validade !== 'indeterminado' ? checkExpirationRisk(data.data_validade) : null;
+                    // Use product type for smart expiration alerts
+                    const productType = data.tipo || imageReading.extractedData.type;
+                    const riskMsg = data.data_validade && data.data_validade !== 'indeterminado' ? checkExpirationRisk(data.data_validade, productType) : null;
                     
                     if (riskMsg) {
                         setAiAlert(riskMsg);
