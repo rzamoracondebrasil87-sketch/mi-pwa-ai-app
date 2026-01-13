@@ -211,9 +211,9 @@ function calculateExpirationDays(readings: ImageReading[]): number {
 function calculateCommonType(readings: ImageReading[]): string {
     const types = readings
         .map(r => r.extractedData.type)
-        .filter((t): t is string => typeof t === 'string' && t !== 'indeterminado');
+        .filter((t): t is string => typeof t === 'string' && t.trim() !== '');
     
-    if (types.length === 0) return 'indeterminado';
+    if (types.length === 0) return '';
     
     // Contar ocurrencias de cada tipo
     const counts = types.reduce((acc, type) => {
@@ -298,7 +298,7 @@ export const getProductType = (supplier: string, product: string): string => {
     const kb = getKnowledgeBase();
     const patternKey = `${supplier}::${product}`;
     const pattern = kb.learningPatterns?.[patternKey];
-    return pattern?.commonProductType || 'indeterminado';
+    return pattern?.commonProductType || '';
 };
 
 export const getKnowledgeBase = (): KnowledgeBase => {

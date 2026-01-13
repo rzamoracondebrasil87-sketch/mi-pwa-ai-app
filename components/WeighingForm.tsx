@@ -380,9 +380,9 @@ export const WeighingForm: React.FC = () => {
                 return null;
             
             default:
-                // Unknown type - use conservative approach
-                // Alert if less than 7 days remaining
-                if (diffDays <= 7) return `⚠️ PRÓXIMO A VENCER: ${diffDays} días`;
+                // Unknown type - use conservative approach: 15 days minimum
+                // IA needs to learn: many products sell quickly or receive small quantities
+                if (diffDays <= 15) return `⚠️ PRÓXIMO A VENCER: ${diffDays} días`;
                 return null;
         }
     };
@@ -852,10 +852,10 @@ Analiza con cuidado, no rápido.`;
                         product: data.produto || product || 'desconocido',
                         imageBase64: base64,
                         extractedData: {
-                            product: data.produto,
-                            productionDate: data.data_fabricacao !== 'indeterminado' ? data.data_fabricacao : undefined,
-                            expirationDate: data.data_validade !== 'indeterminado' ? data.data_validade : undefined,
-                            batch: data.lote !== 'indeterminado' ? data.lote : undefined,
+                            product: data.produto || undefined,
+                            productionDate: data.data_fabricacao ? data.data_fabricacao : undefined,
+                            expirationDate: data.data_validade ? data.data_validade : undefined,
+                            batch: data.lote ? data.lote : undefined,
                             netWeight: data.peso_liquido_kg,
                             grossWeight: data.peso_bruto_kg,
                             tareWeight: data.peso_bruto_kg && data.peso_liquido_kg ? data.peso_bruto_kg - data.peso_liquido_kg : undefined,
@@ -874,9 +874,9 @@ Analiza con cuidado, no rápido.`;
                     // Map new JSON structure to form fields
                     if (data.fornecedor && !supplier) setSupplier(data.fornecedor);
                     if (data.produto && !product) setProduct(data.produto);
-                    if (data.lote && data.lote !== 'indeterminado' && !batch) setBatch(data.lote);
-                    if (data.data_validade && data.data_validade !== 'indeterminado' && !expirationDate) setExpirationDate(data.data_validade);
-                    if (data.data_fabricacao && data.data_fabricacao !== 'indeterminado' && !productionDate) setProductionDate(data.data_fabricacao);
+                    if (data.lote && !batch) setBatch(data.lote);
+                    if (data.data_validade && !expirationDate) setExpirationDate(data.data_validade);
+                    if (data.data_fabricacao && !productionDate) setProductionDate(data.data_fabricacao);
                     
                     // Handle peso_liquido_kg for tara calculation (if needed)
                     let normalizedTara: number | null = null;
@@ -893,28 +893,34 @@ Analiza con cuidado, no rápido.`;
                     }
 
                     // Build extracted photo info (simplified for history)
+                    // Summary: data de fabricação, data de vencimento, lote, tara con cajas/embalajes
                     const extractedInfo = [];
-                    if (data.produto) extractedInfo.push(`${t('ph_product')}: ${data.produto}`);
-                    if (data.fornecedor) extractedInfo.push(`${t('ph_supplier')}: ${data.fornecedor}`);
-                    if (data.lote && data.lote !== 'indeterminado') extractedInfo.push(`${t('ph_batch')}: ${data.lote}`);
-                    if (data.data_fabricacao && data.data_fabricacao !== 'indeterminado') extractedInfo.push(`${t('ph_production')}: ${data.data_fabricacao}`);
-                    if (data.data_validade && data.data_validade !== 'indeterminado') extractedInfo.push(`${t('ph_expiration')}: ${data.data_validade}`);
                     
-                    setExtractedPhotoInfo(extractedInfo.join(' | ') || null);
+                    // Only include non-empty values
+                    if (data.data_fabricacao && data.data_fabricacao.trim()) extractedInfo.push(`Fab: ${data.data_fabricacao}`);
+                    if (data.data_validade && data.data_validade.trim()) extractedInfo.push(`Vto: ${data.data_validade}`);
+                    if (data.lote && data.lote.trim()) extractedInfo.push(`Lote: ${data.lote}`);
+                    
+                    // Add tara with boxes/packaging info from the extracted data
+                    if (data.tara_kg !== null && data.tara_kg !== undefined) {
+                        extractedInfo.push(`Tara: ${data.tara_kg}kg`);
+                    }
+                    
+                    setExtractedPhotoInfo(extractedInfo.length > 0 ? extractedInfo.join(' | ') : null);
 
                     // Build AI alert message (for carousel now)
                     const parts = [];
                     if (data.produto) parts.push(`${t('ph_product')} ${data.produto}`);
                     if (data.fornecedor) parts.push(`${t('ph_supplier')} ${data.fornecedor}`);
-                    if (data.lote && data.lote !== 'indeterminado') parts.push(`${t('ph_batch').toLowerCase()} ${data.lote}`);
-                    if (data.data_fabricacao && data.data_fabricacao !== 'indeterminado') parts.push(`${t('ph_production').toLowerCase()} ${data.data_fabricacao}`);
-                    if (data.data_validade && data.data_validade !== 'indeterminado') parts.push(`${t('ph_expiration').toLowerCase()} ${data.data_validade}`);
+                    if (data.lote) parts.push(`${t('ph_batch').toLowerCase()} ${data.lote}`);
+                    if (data.data_fabricacao) parts.push(`${t('ph_production').toLowerCase()} ${data.data_fabricacao}`);
+                    if (data.data_validade) parts.push(`${t('ph_expiration').toLowerCase()} ${data.data_validade}`);
                     if (data.peso_liquido_kg) parts.push(`${data.peso_liquido_kg}kg neto`);
                     if (data.validaciones) parts.push(`⚠️ ${data.validaciones}`);
 
                     // Use product type for smart expiration alerts
                     const productType = data.tipo || imageReading.extractedData.type;
-                    const riskMsg = data.data_validade && data.data_validade !== 'indeterminado' ? checkExpirationRisk(data.data_validade, productType) : null;
+                    const riskMsg = data.data_validade ? checkExpirationRisk(data.data_validade, productType) : null;
                     
                     if (riskMsg) {
                         setAiAlert(riskMsg);
@@ -926,7 +932,7 @@ Analiza con cuidado, no rápido.`;
                     if (!temperature) {
                         try {
                             // First: Check if label has temperature info
-                            if (data.temperatura_rotulo && data.temperatura_rotulo !== 'indeterminado') {
+                            if (data.temperatura_rotulo) {
                                 logger.debug('Temperature from label:', data.temperatura_rotulo);
                                 const tempMatch = data.temperatura_rotulo.match(/-?\d+/);
                                 if (tempMatch) {

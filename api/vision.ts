@@ -70,20 +70,20 @@ function extraerDatosEtiqueta(texto: string) {
   const matchTemp = texto.match(patrones.temperatura);
 
   return {
-    produto: matchProduto?.[0] || 'indeterminado',
+    produto: matchProduto?.[0] || '',
     data_producao: matchProdAo 
       ? normalizarFecha(matchProdAo[1], matchProdAo[2], matchProdAo[3])
-      : 'indeterminado',
+      : '',
     data_validade: matchValidade
       ? normalizarFecha(matchValidade[1], matchValidade[2], matchValidade[3])
-      : 'indeterminado',
-    lote: matchLote?.[1]?.trim() || 'indeterminado',
+      : '',
+    lote: matchLote?.[1]?.trim() || '',
     peso_liquido_kg: matchPesoLiq ? parseFloat(limparNumero(matchPesoLiq[1])) : null,
     peso_bruto_kg: matchPesoBr ? parseFloat(limparNumero(matchPesoBr[1])) : null,
     tara_kg: matchTara ? parseFloat(limparNumero(matchTara[1])) : null,
-    codigo_barras: matchCodBar?.[1] || 'indeterminado',
+    codigo_barras: matchCodBar?.[1] || '',
     sif: matchSif?.[1] || null,
-    tipo: matchTipo?.[0]?.toLowerCase() || 'indeterminado',
+    tipo: matchTipo?.[0]?.toLowerCase() || '',
     temperatura_rotulo: matchTemp?.[1] || null,
     texto_original_limpio: textoNormalizado,
   };
@@ -221,7 +221,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     
     // Validar fechas
-    if (datosEtiqueta.data_producao !== 'indeterminado' && datosEtiqueta.data_validade !== 'indeterminado') {
+    if (datosEtiqueta.data_producao && datosEtiqueta.data_validade) {
       try {
         const [diaProd, mesProd, anoProd] = datosEtiqueta.data_producao.split('/').map(Number);
         const [diaVal, mesVal, anoVal] = datosEtiqueta.data_validade.split('/').map(Number);
