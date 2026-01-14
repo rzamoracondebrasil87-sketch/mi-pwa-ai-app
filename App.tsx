@@ -8,6 +8,7 @@ import { ToastProvider, useToast } from './components/Toast';
 import { InstallPrompt } from './components/InstallPrompt';
 import { AnalyticsDashboard } from './components/AnalyticsDashboard';
 import { initAnalytics, trackEvent } from './services/analyticsService';
+// Vision API credentials now properly configured in Vercel environment
 
 // Tolerance limit 200g
 const TOLERANCE_KG = 0.2;
