@@ -165,41 +165,70 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // Decodificar credenciales
+    let credentialsJson: string;
+    let credentials: any;
+    
     try {
-      const credentialsJson = Buffer.from(credentialsBase64, 'base64').toString('utf-8');
-      const credentials = JSON.parse(credentialsJson);
-
-        logger.debug('Credentials decoded successfully');
+      credentialsJson = Buffer.from(credentialsBase64, 'base64').toString('utf-8');
+      credentials = JSON.parse(credentialsJson);
+      logger.debug('Credentials decoded successfully');
+    } catch (decodeError: any) {
+      logger.error('Failed to decode credentials:', decodeError?.message);
+      return res.status(500).json({
+        error: 'Invalid credentials format',
+        message: 'Could not decode GOOGLE_CLOUD_CREDENTIALS'
+      });
+    }
 
     // Obtener access token
-    const accessToken = await getAccessToken(credentials);
+    let accessToken: string;
+    try {
+      accessToken = await getAccessToken(credentials);
+      logger.debug('Access token obtained successfully');
+    } catch (tokenError: any) {
+      logger.error('Failed to get access token:', tokenError?.message);
+      return res.status(500).json({
+        error: 'Authentication failed',
+        message: 'Could not obtain access token from Google Cloud'
+      });
+    }
 
     // Llamar a Vision API
-      logger.debug('Calling Vision API...');
-    const visionResponse = await fetch('https://vision.googleapis.com/v1/images:annotate', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        requests: [
-          {
-            image: { content: imageBase64 },
-            features: [{ type: 'TEXT_DETECTION' }],
-          },
-        ],
-      }),
-    });
+    logger.debug('Calling Vision API...');
+    let visionResponse: Response;
+    try {
+      visionResponse = await fetch('https://vision.googleapis.com/v1/images:annotate', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          requests: [
+            {
+              image: { content: imageBase64 },
+              features: [{ type: 'TEXT_DETECTION' }],
+            },
+          ],
+        }),
+      });
+    } catch (fetchError: any) {
+      logger.error('Vision API fetch failed:', fetchError?.message);
+      return res.status(502).json({
+        error: 'Vision API unreachable',
+        message: 'Could not connect to Google Cloud Vision API'
+      });
+    }
 
-      logger.debug('Vision response status:', visionResponse.status);
+    logger.debug('Vision response status:', visionResponse.status);
 
     if (!visionResponse.ok) {
       const errorText = await visionResponse.text();
-        logger.error('Vision API error response:', errorText);
+      logger.error('Vision API error response:', errorText);
       return res.status(visionResponse.status).json({
         error: 'Vision API error',
-        message: errorText.substring(0, 200), // Limit error message length
+        message: errorText.substring(0, 200),
+        shouldUseOfflineOCR: true
       });
     }
 
@@ -211,12 +240,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({
         error: 'Vision API error',
         message: annotation.error?.message || 'Unknown',
+        shouldUseOfflineOCR: true
       });
     }
 
     const fullText = annotation?.fullTextAnnotation?.text || (annotation?.textAnnotations?.[0]?.description) || '';
-
-      logger.debug('Vision text extracted, length:', fullText.length);
+    logger.debug('Vision text extracted, length:', fullText.length);
     
     // Extraer datos estructurados
     const datosEtiqueta = extraerDatosEtiqueta(fullText);
