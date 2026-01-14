@@ -25,3 +25,11 @@ dist-ssr
 
 .vercel
 .env*.local
+# Google Cloud credentials (protect sensitive files)
+*.json
+!components/
+!public/
+!scripts/
+!api/
+gen-lang-client-*.json
+credentials_*.json
