@@ -1,5 +1,5 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
-import jwt from 'jsonwebtoken';
+// import jwt from 'jsonwebtoken'; // REMOVED - using API key auth instead
 import { logger } from '../services/logger';
 
 /**
@@ -90,55 +90,38 @@ function extraerDatosEtiqueta(texto: string) {
 }
 
 /**
- * Vercel API endpoint para Google Cloud Vision Text Detection
- * Usa Service Account autenticado con JWT de jsonwebtoken
+ * Simplified Vision API using API key authentication
+ * No JWT required - uses direct API key auth
  */
 
-async function getAccessToken(credentials: any): Promise<string> {
+async function callVisionAPI(imageBase64: string, apiKey: string): Promise<any> {
   try {
-    if (!credentials.client_email || !credentials.private_key) {
-      throw new Error('Invalid credentials: missing client_email or private_key');
-    }
-
-    // Crear JWT con la librería jsonwebtoken
-    const token = jwt.sign(
-      {
-        iss: credentials.client_email,
-        scope: 'https://www.googleapis.com/auth/cloud-vision',
-        aud: 'https://oauth2.googleapis.com/token',
-        exp: Math.floor(Date.now() / 1000) + 3600,
-        iat: Math.floor(Date.now() / 1000),
-      },
-      credentials.private_key,
-      { algorithm: 'RS256' }
-    );
-
-    logger.debug('JWT created, requesting access token...');
-
-    // Intercambiar JWT por access token
-    const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+    const response = await fetch(`https://vision.googleapis.com/v1/images:annotate?key=${apiKey}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${token}`,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        requests: [
+          {
+            image: { content: imageBase64 },
+            features: [{ type: 'TEXT_DETECTION' }],
+          },
+        ],
+      }),
     });
 
-    if (!tokenResponse.ok) {
-      const errorText = await tokenResponse.text();
-      logger.error('Token exchange HTTP error:', tokenResponse.status, errorText);
-      throw new Error(`Token exchange failed: ${tokenResponse.status}`);
+    if (!response.ok) {
+      const errorText = await response.text();
+      logger.error('Vision API error response:', response.status, errorText);
+      throw new Error(`Vision API error: ${response.status} - ${errorText}`);
     }
 
-    const tokenData: any = await tokenResponse.json();
-    
-    if (!tokenData.access_token) {
-      logger.error('Token exchange response missing access_token:', tokenData);
-      throw new Error(`Token exchange failed: no access_token in response`);
-    }
-
-    logger.debug('Access token obtained successfully');
-    return tokenData.access_token;
+    const data = await response.json();
+    logger.debug('Vision API call successful');
+    return data;
   } catch (error: any) {
-    logger.error('Token generation error:', error?.message || String(error));
+    logger.error('Vision API call failed:', error?.message || String(error));
     throw error;
   }
 }
@@ -160,13 +143,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     logger.debug('Vision API request received, image size:', imageBase64.length);
 
-    // Obtener credenciales de Service Account (try multiple sources)
-    const credentialsBase64 = process.env.GOOGLE_CLOUD_CREDENTIALS || 
-                              process.env.VITE_GOOGLE_CLOUD_CREDENTIALS ||
-                              process.env.GCP_CREDENTIALS;
+    // Get API key (simpler authentication)
+    const apiKey = process.env.GOOGLE_VISION_API_KEY || 
+                   process.env.VITE_GOOGLE_VISION_KEY ||
+                   process.env.GOOGLE_CLOUD_API_KEY;
     
-    if (!credentialsBase64) {
-      logger.warn('GOOGLE_CLOUD_CREDENTIALS not configured');
+    if (!apiKey) {
+      logger.warn('GOOGLE_VISION_API_KEY not configured');
       return res.status(503).json({ 
         error: 'Vision API not configured',
         message: 'Please use offline OCR in the browser',
@@ -174,90 +157,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    // Decodificar credenciales
-    let credentialsJson: string;
-    let credentials: any;
-    
+    // Call Vision API directly with API key
+    let visionData: any;
     try {
-      credentialsJson = Buffer.from(credentialsBase64, 'base64').toString('utf-8');
-      credentials = JSON.parse(credentialsJson);
-      logger.debug('Credentials decoded successfully');
-    } catch (decodeError: any) {
-      logger.error('Failed to decode credentials:', decodeError?.message);
-      return res.status(500).json({
-        error: 'Invalid credentials format',
-        message: 'Could not decode GOOGLE_CLOUD_CREDENTIALS',
-        shouldUseOfflineOCR: true
-      });
-    }
-
-    // Obtener access token
-    let accessToken: string;
-    try {
-      accessToken = await getAccessToken(credentials);
-      logger.debug('Access token obtained successfully');
-    } catch (tokenError: any) {
-      logger.error('Failed to get access token:', tokenError?.message);
-      return res.status(500).json({
-        error: 'Authentication failed',
-        message: 'Could not obtain access token from Google Cloud',
-        shouldUseOfflineOCR: true
-      });
-    }
-
-    // Llamar a Vision API
-    logger.debug('Calling Vision API...');
-    let visionResponse: Response;
-    try {
-      visionResponse = await fetch('https://vision.googleapis.com/v1/images:annotate', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          requests: [
-            {
-              image: { content: imageBase64 },
-              features: [{ type: 'TEXT_DETECTION' }],
-            },
-          ],
-        }),
-      });
-    } catch (fetchError: any) {
-      logger.error('Vision API fetch failed:', fetchError?.message);
+      visionData = await callVisionAPI(imageBase64, apiKey);
+    } catch (visionError: any) {
+      logger.error('Vision API call failed:', visionError?.message);
       return res.status(502).json({
-        error: 'Vision API unreachable',
-        message: 'Could not connect to Google Cloud Vision API',
-        shouldUseOfflineOCR: true
-      });
-    }
-
-    logger.debug('Vision response status:', visionResponse.status);
-
-    if (!visionResponse.ok) {
-      const errorText = await visionResponse.text();
-      logger.error('Vision API error response:', errorText.substring(0, 200));
-      return res.status(visionResponse.status).json({
         error: 'Vision API error',
-        message: errorText.substring(0, 100),
+        message: visionError?.message || 'Could not process image',
         shouldUseOfflineOCR: true
       });
     }
 
-    let data: any;
-    try {
-      data = await visionResponse.json();
-    } catch (jsonError: any) {
-      logger.error('Failed to parse Vision API response as JSON:', jsonError?.message);
-      return res.status(502).json({
-        error: 'Invalid Vision API response',
-        message: 'Could not parse Vision API response',
-        shouldUseOfflineOCR: true
-      });
-    }
-
-    const annotation = data.responses?.[0];
+    const annotation = visionData.responses?.[0];
     
     if (annotation?.error) {
       logger.error('Vision API returned error:', annotation.error?.message || annotation.error);
