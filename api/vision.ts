@@ -149,18 +149,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       logger.debug('Vision API request received, image size:', imageBase64.length);
 
-    // Obtener credenciales de Service Account
-    const credentialsBase64 = process.env.GOOGLE_CLOUD_CREDENTIALS;
+    // Obtener credenciales de Service Account (try multiple sources)
+    const credentialsBase64 = process.env.GOOGLE_CLOUD_CREDENTIALS || 
+                              process.env.VITE_GOOGLE_CLOUD_CREDENTIALS ||
+                              process.env.GCP_CREDENTIALS;
     if (!credentialsBase64) {
         logger.error('GOOGLE_CLOUD_CREDENTIALS not configured in environment');
-      return res.status(500).json({ error: 'Vision credentials not configured' });
+        logger.error('Available env keys:', Object.keys(process.env).filter(k => k.includes('GOOGLE') || k.includes('GCP')));
+      return res.status(500).json({ error: 'Vision credentials not configured', details: 'Check server environment variables' });
     }
 
     // Decodificar credenciales
-    const credentialsJson = Buffer.from(credentialsBase64, 'base64').toString('utf-8');
-    const credentials = JSON.parse(credentialsJson);
+    try {
+      const credentialsJson = Buffer.from(credentialsBase64, 'base64').toString('utf-8');
+      const credentials = JSON.parse(credentialsJson);
 
-      logger.debug('Credentials decoded');
+        logger.debug('Credentials decoded successfully');
 
     // Obtener access token
     const accessToken = await getAccessToken(credentials);
