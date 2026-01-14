@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { callGeminiAPI } from '../services/geminiService';
+// import { callGeminiAPI } from '../services/geminiService'; // REMOVED - Gemini no longer available
 import { useTranslation } from '../services/i18n';
 import { useToast } from './Toast';
 import { logger } from '../services/logger';
@@ -118,6 +118,47 @@ export const GlobalWeighingChat: React.FC<GlobalWeighingChatProps> = ({ isVisibl
         }
     }, []);
 
+    // Static responses for common weighing questions (Gemini removed)
+    const getStaticResponse = (userMessage: string): string => {
+        const message = userMessage.toLowerCase();
+
+        // Common weighing questions and answers
+        if (message.includes('tara') || message.includes('tare')) {
+            return 'La tara es el peso del empaque vacío. Se calcula como: Tara = Peso Bruto - Peso Líquido. Es importante medirla correctamente para obtener el peso neto preciso.';
+        }
+
+        if (message.includes('tolerancia') || message.includes('diferencia')) {
+            return 'La tolerancia típica en pesaje es de ±0.5kg para cargas grandes. Si la diferencia supera este valor, verifica: calibración de balanzas, tara correcta, y condiciones ambientales.';
+        }
+
+        if (message.includes('bruto') || message.includes('peso bruto')) {
+            return 'Peso Bruto es el peso total incluyendo el producto y su empaque. Para calcular el peso neto: Neto = Bruto - Tara.';
+        }
+
+        if (message.includes('neto') || message.includes('peso neto')) {
+            return 'Peso Neto es el peso del producto sin empaque. Se calcula como: Neto = Peso Bruto - Tara. Este es el valor que debe coincidir con la nota de peso.';
+        }
+
+        if (message.includes('nota') || message.includes('peso nota')) {
+            return 'La nota de peso es el peso declarado en el documento de transporte. Debe coincidir con el peso neto medido, dentro de la tolerancia permitida.';
+        }
+
+        if (message.includes('temperatura') || message.includes('temp')) {
+            return 'La temperatura afecta el peso de los productos congelados/descongelados. Mantén registros de temperatura y verifica que coincida con las especificaciones del producto.';
+        }
+
+        if (message.includes('vencimiento') || message.includes('caducidad') || message.includes('fecha')) {
+            return 'Verifica siempre las fechas de vencimiento. Productos congelados pueden tener diferentes requisitos de rotación según su tipo y temperatura de almacenamiento.';
+        }
+
+        if (message.includes('calibración') || message.includes('balanza')) {
+            return 'Las balanzas deben calibrarse regularmente. Si hay diferencias constantes, verifica la calibración y el mantenimiento de las balanzas.';
+        }
+
+        // Default response
+        return 'Para preguntas sobre pesaje, tara, diferencias de peso o buenas prácticas, puedo ayudarte. Pregunta sobre conceptos específicos como tara, peso bruto/neto, tolerancias, o temperaturas.';
+    };
+
     const handleSend = async () => {
         if (!input.trim()) return;
 
@@ -127,24 +168,12 @@ export const GlobalWeighingChat: React.FC<GlobalWeighingChatProps> = ({ isVisibl
         setLoading(true);
 
         try {
-            const historialContext = getHistorialContext();
-            const prompt = `Eres un experto en pesaje y control de calidad. Ayuda con:
-- Diferencias de peso y tolerancias
-- Explicación de Tara, Bruto, Nota, Peso Neto
-- Anomalías y errores en pesaje
-- Buenas prácticas de pesaje
-- Regulaciones internacionales
-
-${historialContext}
-
-Responde brevemente (máximo 2-3 oraciones) de forma clara y didáctica.
-Idioma: español.`;
-
-            const response = await callGeminiAPI(prompt + '\n\nPregunta: ' + userMessage);
+            // Use static responses instead of Gemini
+            const response = getStaticResponse(userMessage);
             setMessages(prev => [...prev, { role: 'assistant', text: response }]);
         } catch (err) {
             logger.error('Chat error:', err);
-            showToast('Error al conectar', 'error');
+            showToast('Error en respuesta', 'error');
         } finally {
             setLoading(false);
         }
