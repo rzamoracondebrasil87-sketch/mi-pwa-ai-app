@@ -17,7 +17,6 @@ export const InstallManager: React.FC = () => {
     const { t } = useTranslation();
     const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null);
     const [showInstallModal, setShowInstallModal] = useState(false);
-    const [updateAvailable, setUpdateAvailable] = useState(false);
     const [deviceType, setDeviceType] = useState<DeviceType>('unknown');
 
     // Detectar tipo de dispositivo
@@ -108,22 +107,6 @@ export const InstallManager: React.FC = () => {
 
         window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
 
-        // 2. Handle Service Worker Updates
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.ready.then(registration => {
-                registration.addEventListener('updatefound', () => {
-                    const newWorker = registration.installing;
-                    if (newWorker) {
-                        newWorker.addEventListener('statechange', () => {
-                            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                                setUpdateAvailable(true);
-                            }
-                        });
-                    }
-                });
-            });
-        }
-
         return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     }, []);
 
@@ -136,23 +119,8 @@ export const InstallManager: React.FC = () => {
         }
     };
 
-    const updateApp = () => {
-        window.location.reload();
-    };
-
     return (
         <>
-            {/* Update Toast */}
-            {updateAvailable && (
-                <div className="fixed top-6 left-0 right-0 z-50 flex justify-center px-4">
-                    <div className="bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-6 py-3 rounded-full shadow-2xl flex items-center gap-4 animate-bounce border border-white/10">
-                        <span className="material-icons-round text-yellow-400 dark:text-orange-500">system_update</span>
-                        <span className="text-sm font-bold">{t('update_available')}</span>
-                        <button onClick={updateApp} className="bg-white/20 dark:bg-slate-200/50 hover:bg-white/30 px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-wide">{t('btn_update')}</button>
-                    </div>
-                </div>
-            )}
-
             {/* Install Modal */}
             {showInstallModal && (
                 <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-md p-4">
