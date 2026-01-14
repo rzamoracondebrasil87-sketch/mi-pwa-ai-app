@@ -153,10 +153,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const credentialsBase64 = process.env.GOOGLE_CLOUD_CREDENTIALS || 
                               process.env.VITE_GOOGLE_CLOUD_CREDENTIALS ||
                               process.env.GCP_CREDENTIALS;
+    
     if (!credentialsBase64) {
-        logger.error('GOOGLE_CLOUD_CREDENTIALS not configured in environment');
-        logger.error('Available env keys:', Object.keys(process.env).filter(k => k.includes('GOOGLE') || k.includes('GCP')));
-      return res.status(500).json({ error: 'Vision credentials not configured', details: 'Check server environment variables' });
+        logger.warn('GOOGLE_CLOUD_CREDENTIALS not configured - Vision API will not work on server');
+        // Return error that tells client to use offline OCR
+      return res.status(503).json({ 
+        error: 'Vision API not configured',
+        message: 'Please use offline OCR in the browser',
+        shouldUseOfflineOCR: true 
+      });
     }
 
     // Decodificar credenciales
