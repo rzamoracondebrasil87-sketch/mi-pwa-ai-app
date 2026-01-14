@@ -1,0 +1,7 @@
+dist
+dist_old_*
+dist_build
+node_modules
+.git
+.env.local
+.gitignore
