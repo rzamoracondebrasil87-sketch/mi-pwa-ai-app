@@ -112,9 +112,5 @@ export const InstallPrompt: React.FC<InstallPromptProps> = ({ className }) => {
         );
     }
 
-    return (
-        <div className={`bg-white/5 backdrop-blur-sm border border-white/5 p-4 rounded-xl text-center ${className}`}>
-             <p className="text-white/30 text-xs uppercase tracking-wider">Modo Navegador Web</p>
-        </div>
-    );
+    return null;
 };
