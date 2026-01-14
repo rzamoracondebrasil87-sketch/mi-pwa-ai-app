@@ -67,6 +67,7 @@ export async function callGeminiAPI(prompt: string): Promise<string> {
   const errors: Error[] = [];
   const keysToTry = GEMINI_KEYS.length ? GEMINI_KEYS : (GEMINI_API_KEY ? [GEMINI_API_KEY] : []);
   if (!keysToTry.length) throw new Error('No Gemini API keys available. Configure VITE_GEMINI_API_KEY or VITE_GEMINI_API_KEYS.');
+  
   for (let attempt = 0; attempt < keysToTry.length; attempt++) {
     const key = keysToTry[(geminiKeyIndex + attempt) % keysToTry.length];
     try {
@@ -75,23 +76,59 @@ export async function callGeminiAPI(prompt: string): Promise<string> {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestBody),
       });
+      
+      // Check response status
+      if (response.status === 401 || response.status === 403) {
+        const errText = await response.text();
+        console.warn(`Gemini key #${attempt + 1} is unauthorized/forbidden:`, errText);
+        errors.push(new Error(`Clave ${attempt + 1}: Unauthorized (401/403)`));
+        continue; // Try next key
+      }
+      
+      if (response.status === 400) {
+        const errText = await response.text();
+        if (errText.includes('expired') || errText.includes('API key')) {
+          console.warn(`Gemini key #${attempt + 1} appears to be expired or invalid:`, errText);
+          errors.push(new Error(`Clave ${attempt + 1}: API key expired or invalid`));
+          continue; // Try next key
+        }
+      }
+      
+      if (!response.ok) {
+        const errText = await response.text();
+        console.error(`Gemini API error (${response.status}):`, errText);
+        errors.push(new Error(`API error: ${response.status}`));
+        // Only retry on rate limit (429)
+        if (response.status === 429) continue;
+        break; // Don't retry on other errors
+      }
+      
       const data = await response.json() as GeminiResponse;
+      
+      if (data.error) {
+        const errorMsg = data.error.message || 'Unknown error';
+        console.error('Gemini error response:', errorMsg);
+        errors.push(new Error(`Gemini API: ${errorMsg}`));
+        // Continue to next key if available
+        if (attempt < keysToTry.length - 1) continue;
+        break;
+      }
+      
       if (!data.candidates?.[0]?.content?.parts?.[0]?.text) {
         throw new Error('Respuesta inválida de Gemini API');
       }
-      // Advance index so next call prefers next key
-      geminiKeyIndex = (geminiKeyIndex + attempt) % keysToTry.length;
+      
+      // Success! Advance index so next call prefers next key
+      geminiKeyIndex = (geminiKeyIndex + attempt + 1) % keysToTry.length;
       return data.candidates[0].content.parts[0].text;
     } catch (err: any) {
       console.error('Gemini key attempt failed:', err?.message || err);
       errors.push(err instanceof Error ? err : new Error(String(err)));
-      const msg = (err && err.message) ? err.message : '';
-      // If error is not a quota/rate-limit, stop trying
-      if (!/quota|rate limit|429|exceeded/i.test(msg)) break;
-      // otherwise try next key
+      // Try next key
       continue;
     }
   }
+  
   const all = errors.map(e => e.message).join(' | ');
   throw new Error(`Todas las claves Gemini fallaron: ${all}`);
 }
