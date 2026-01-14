@@ -113,12 +113,6 @@ const HistoryItem: React.FC<{
                             <span className="text-[10px] font-bold text-red-600 dark:text-red-300">{riskMsg}</span>
                         </div>
                     )}
-                     {record.aiAnalysis && (
-                         <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-purple-50 dark:bg-purple-900/10 border border-purple-100 dark:border-purple-800/30">
-                            <span className="material-icons-round text-[10px] text-purple-400">smart_toy</span>
-                            <span className="text-[10px] font-bold text-purple-600 dark:text-purple-300">IA</span>
-                        </div>
-                    )}
                 </div>
             </div>
 
@@ -144,14 +138,6 @@ const HistoryItem: React.FC<{
                             <div className="flex justify-between items-center col-span-2 py-2 border-b border-zinc-200 dark:border-zinc-800 border-dashed">
                                 <span className="text-zinc-500 dark:text-zinc-400 font-medium">Lote</span>
                                 <span className="font-mono font-bold text-zinc-800 dark:text-white text-sm">{record.batch}</span>
-                            </div>
-                        )}
-                        {record.aiAnalysis && (
-                            <div className="col-span-2 mt-4 bg-white dark:bg-zinc-800 p-4 rounded-2xl border border-purple-100 dark:border-purple-900/30 shadow-sm">
-                                <p className="font-black text-purple-600 dark:text-purple-300 text-[10px] uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
-                                    <span className="material-icons-round text-xs">smart_toy</span> Análisis IA
-                                </p>
-                                <p className="text-zinc-600 dark:text-zinc-300 leading-relaxed font-medium">{record.aiAnalysis}</p>
                             </div>
                         )}
                     </div>
@@ -217,7 +203,7 @@ const App: React.FC = () => {
     const handleShare = (record: WeighingRecord) => {
         const diff = (record.netWeight || 0) - (record.noteWeight || 0);
         const icon = Math.abs(diff) <= TOLERANCE_KG ? '✅' : '⚠️';
-        const msg = `${t('rpt_title')}\n${t('rpt_supplier')} ${record.supplier}\n${t('rpt_product')} ${record.product}\n${record.batch ? `${t('rpt_batch')} ${record.batch}\n` : ''}${record.expirationDate ? `${t('rpt_expiration')} ${record.expirationDate}\n` : ''}\n${t('rpt_note')} ${record.noteWeight}kg\n${t('rpt_gross')} ${record.grossWeight}kg\n${t('rpt_tara')} ${record.taraTotal ? record.taraTotal.toFixed(2) : '0.00'}kg\n${t('rpt_net')} ${(record.netWeight || 0).toFixed(2)}kg\n\n${t('rpt_diff')} ${diff > 0 ? '+' : ''}${diff.toFixed(2)}kg ${icon}${record.aiAnalysis ? `\n${t('rpt_ai_obs')} ${record.aiAnalysis}` : ''}`;
+        const msg = `${t('rpt_title')}\n${t('rpt_supplier')} ${record.supplier}\n${t('rpt_product')} ${record.product}\n${record.batch ? `${t('rpt_batch')} ${record.batch}\n` : ''}${record.expirationDate ? `${t('rpt_expiration')} ${record.expirationDate}\n` : ''}\n${t('rpt_note')} ${record.noteWeight}kg\n${t('rpt_gross')} ${record.grossWeight}kg\n${t('rpt_tara')} ${record.taraTotal ? record.taraTotal.toFixed(2) : '0.00'}kg\n${t('rpt_net')} ${(record.netWeight || 0).toFixed(2)}kg\n\n${t('rpt_diff')} ${diff > 0 ? '+' : ''}${diff.toFixed(2)}kg ${icon}`;
         const url = `https://wa.me/?text=${encodeURIComponent(msg)}`;
         window.open(url, '_blank');
         trackEvent('share_whatsapp', { recordId: record.id });
@@ -395,6 +381,10 @@ const App: React.FC = () => {
                 {activeTab === 'weigh' && (
                     <>
                         <div className="w-px h-8 bg-zinc-200 dark:bg-zinc-700 mx-1.5"></div>
+                        <div className="flex items-center gap-1.5 animate-slide-left pr-1">
+                            <button onClick={() => { if(confirm('¿Limpiar formulario?')) { /* Clear form action */ } }} className="w-14 h-14 rounded-full flex items-center justify-center text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all" title="Limpiar"><span className="material-icons-round text-2xl">delete_outline</span></button>
+                            <button onClick={() => { /* Save form handled by WeighingForm */ }} className="w-14 h-14 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 text-white shadow-xl shadow-emerald-500/30 flex items-center justify-center hover:scale-105 active:scale-95 transition-all" title="Guardar"><span className="material-icons-round text-2xl">save</span></button>
+                        </div>
                     </>
                 )}
             </nav>
