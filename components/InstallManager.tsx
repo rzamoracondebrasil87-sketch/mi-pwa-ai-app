@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { InstallPromptEvent } from '../types';
 import { useTranslation } from '../services/i18n';
+// Version updated: 2026-01-13 - Removed version update UI
 
 type DeviceType = 'ios' | 'android' | 'desktop' | 'unknown';
 
