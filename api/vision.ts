@@ -144,20 +144,21 @@ async function getAccessToken(credentials: any): Promise<string> {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // Set response headers to always return JSON
+  // ALWAYS set JSON header first
   res.setHeader('Content-Type', 'application/json');
   
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
-
+  // Wrap everything in a top-level try-catch
   try {
+    if (req.method !== 'POST') {
+      return res.status(405).json({ error: 'Method not allowed' });
+    }
+
     const { imageBase64 } = req.body;
     if (!imageBase64) {
       return res.status(400).json({ error: 'imageBase64 required in body' });
     }
 
-      logger.debug('Vision API request received, image size:', imageBase64.length);
+    logger.debug('Vision API request received, image size:', imageBase64.length);
 
     // Obtener credenciales de Service Account (try multiple sources)
     const credentialsBase64 = process.env.GOOGLE_CLOUD_CREDENTIALS || 
@@ -165,8 +166,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                               process.env.GCP_CREDENTIALS;
     
     if (!credentialsBase64) {
-        logger.warn('GOOGLE_CLOUD_CREDENTIALS not configured - Vision API will not work on server');
-        // Return error that tells client to use offline OCR
+      logger.warn('GOOGLE_CLOUD_CREDENTIALS not configured');
       return res.status(503).json({ 
         error: 'Vision API not configured',
         message: 'Please use offline OCR in the browser',
@@ -186,7 +186,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       logger.error('Failed to decode credentials:', decodeError?.message);
       return res.status(500).json({
         error: 'Invalid credentials format',
-        message: 'Could not decode GOOGLE_CLOUD_CREDENTIALS'
+        message: 'Could not decode GOOGLE_CLOUD_CREDENTIALS',
+        shouldUseOfflineOCR: true
       });
     }
 
@@ -199,7 +200,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       logger.error('Failed to get access token:', tokenError?.message);
       return res.status(500).json({
         error: 'Authentication failed',
-        message: 'Could not obtain access token from Google Cloud'
+        message: 'Could not obtain access token from Google Cloud',
+        shouldUseOfflineOCR: true
       });
     }
 
@@ -226,7 +228,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       logger.error('Vision API fetch failed:', fetchError?.message);
       return res.status(502).json({
         error: 'Vision API unreachable',
-        message: 'Could not connect to Google Cloud Vision API'
+        message: 'Could not connect to Google Cloud Vision API',
+        shouldUseOfflineOCR: true
       });
     }
 
@@ -234,15 +237,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (!visionResponse.ok) {
       const errorText = await visionResponse.text();
-      logger.error('Vision API error response:', errorText);
+      logger.error('Vision API error response:', errorText.substring(0, 200));
       return res.status(visionResponse.status).json({
         error: 'Vision API error',
-        message: errorText.substring(0, 200),
+        message: errorText.substring(0, 100),
         shouldUseOfflineOCR: true
       });
     }
 
-    const data: any = await visionResponse.json();
+    let data: any;
+    try {
+      data = await visionResponse.json();
+    } catch (jsonError: any) {
+      logger.error('Failed to parse Vision API response as JSON:', jsonError?.message);
+      return res.status(502).json({
+        error: 'Invalid Vision API response',
+        message: 'Could not parse Vision API response',
+        shouldUseOfflineOCR: true
+      });
+    }
+
     const annotation = data.responses?.[0];
     
     if (annotation?.error) {
@@ -291,20 +305,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
     
   } catch (error: any) {
-    logger.error('Vision API endpoint error:', error?.message || error);
+    logger.error('Vision API CRITICAL ERROR:', error?.message || error, error?.stack);
     
-    // Ensure always return valid JSON
-    const errorResponse = {
-      error: 'Vision API error',
-      message: error?.message || 'Unknown error occurred',
-      timestamp: new Date().toISOString(),
-    };
-    
-    // Add stack trace only in development
-    if (process.env.NODE_ENV === 'development') {
-      (errorResponse as any).stack = error?.stack;
+    // ALWAYS return valid JSON, even on critical errors
+    try {
+      return res.status(500).json({
+        error: 'Vision API error',
+        message: error?.message || 'Unknown error occurred',
+        timestamp: new Date().toISOString(),
+        shouldUseOfflineOCR: true
+      });
+    } catch (responseError) {
+      // If even response fails, log it
+      logger.error('CRITICAL: Could not send error response:', responseError);
+      res.statusCode = 500;
+      res.end(JSON.stringify({ error: 'Internal server error' }));
     }
-    
-    return res.status(500).json(errorResponse);
   }
 }
