@@ -5,8 +5,6 @@ import { saveRecord, predictData, getKnowledgeBase, getLastRecordBySupplier, get
 import { trackEvent } from '../services/analyticsService';
 import { useTranslation } from '../services/i18n';
 import { useToast } from './Toast';
-import { callGeminiAPI, analyzeImageWithGemini } from '../services/geminiService';
-import { readProductLabel } from '../services/labelService';
 import { storeImageReading, predictFromReadings } from '../services/storageService';
 import { analyzeImageWithVision } from '../services/visionService';
 import { logger } from '../services/logger';
@@ -699,29 +697,7 @@ export const WeighingForm: React.FC = () => {
             // Trigger automatic temperature suggestion based on product + supplier only (NO OCR)
             (async () => {
                 try {
-                    const month = new Date().getMonth() + 1;
-                    const season = month >= 3 && month <= 8 ? 'verano (cálido)' : 'invierno (frío)';
-                    
-                    const prompt = `Eres experto en almacenamiento y logística de productos alimentarios.
-
-Producto: ${productName}
-Proveedor: ${supplierName || 'desconocido'}
-Temporada actual: ${season}
-
-Sugiere UNA temperatura óptima (en °C) para almacenar este producto, considerando:
-- El tipo de producto
-- La temporada/clima actual
-- Regulaciones internacionales de almacenamiento
-
-RESPONDE SOLO UN NÚMERO ENTRE 2 Y 25 (ej: 15), sin explicación, sin símbolo °.`;
-
-                    const result = await callGeminiAPI(prompt);
-                    const temp = parseInt(result?.trim() || '0');
-                    
-                    if (temp > 1 && temp < 26) {
-                        setTemperatureSuggestion(temp);
-                        setTemperature(temp.toString());
-                    }
+                    // Temperature auto-suggestion disabled (Gemini removed)
                 } catch (e) {
                     logger.debug('Auto temperature suggestion skipped:', e);
                 }
@@ -768,9 +744,8 @@ RESPONDE SOLO UN NÚMERO ENTRE 2 Y 25 (ej: 15), sin explicación, sin símbolo �
             console.warn('Vision API failed:', visionError);
         }
         
-        // 2. Try Gemini (with rotation) if Vision didn't work
+        // 2. Directly use offline OCR if Vision failed
         try {
-            logger.debug('Attempting Gemini API...');
             const prompt = `ESPECIALISTA EN LECTURA DE ETIQUETAS INDUSTRIALES ALIMENTARIAS
 
 TU ROL: Especialista en lectura de etiquetas de productos alimentarios brasileños (cárnicos, congelados, resfriados).
@@ -942,31 +917,6 @@ Analiza con cuidado, no rápido.`;
                                     setTemperatureSuggestion(labelTemp);
                                     setTemperature(labelTemp.toString());
                                 }
-                            } else {
-                                // If no label temp, use Gemini to predict from image
-                                const tempPrompt = `Analiza esta imagen de un producto alimentario.
-
-Basándote ÚNICAMENTE en lo que ves (etiqueta, tipo de producto, embalaje, etc.):
-
-1. ¿Qué tipo de producto es? (ej: carne, lácteos, verduras, frutas, etc.)
-2. ¿Hay instrucciones de almacenamiento en la etiqueta?
-3. ¿Parece ser un producto fresco, refrigerado o congelado?
-
-Sugiere la temperatura óptima (en °C) para almacenar este producto.
-
-RESPONDE SOLO UN NÚMERO ENTRE 0 Y 25 (ej: 15 o 4), sin explicación, sin símbolo °.`;
-
-                                const tempResult = await analyzeImageWithGemini(base64, tempPrompt);
-                                if (tempResult) {
-                                    const tempValue = parseInt(tempResult?.trim() || '0');
-                                    if (tempValue > -1 && tempValue < 26) {
-                                        imageReading.extractedData.temperature = tempValue;
-                                        imageReading.aiPrediction = { temperature: tempValue, confidence: 75 };
-                                        setTemperatureSuggestion(tempValue);
-                                        setTemperature(tempValue.toString());
-                                        logger.debug('Temperature predicted from image:', tempValue);
-                                    }
-                                }
                             }
                         } catch (tempError) {
                             logger.debug('Temperature prediction failed:', tempError);
@@ -1010,18 +960,7 @@ RESPONDE SOLO UN NÚMERO ENTRE 0 Y 25 (ej: 15 o 4), sin explicación, sin símbo
                     setIsReadingImage(false);
                     return;
 
-                } catch (parseError) {
-                    console.warn('Gemini JSON parse failed, trying Offline OCR:', parseError);
-                }
-            }
-        } catch (geminiError: any) {
-            console.warn('Gemini failed, attempting Offline OCR...', geminiError);
-            if (geminiError?.message && /quota|rate limit|429|exceeded/i.test(geminiError.message)) {
-                setAiAlert("Error de cuota en APIs remotas. Usando OCR local...");
-            }
-        }
-        
-        // 3. Fallback to Offline OCR
+                // Fallback to Offline OCR
         try {
             logger.debug('Attempting Offline OCR (fallback)...');
             await performOfflineOCR(base64Image);
@@ -1031,7 +970,6 @@ RESPONDE SOLO UN NÚMERO ENTRE 0 Y 25 (ej: 15 o 4), sin explicación, sin símbo
         } finally {
             setIsReadingImage(false);
         }
-    };
 
     const getStatusColor = () => {
         if (!grossWeight || !noteWeight) return 'from-slate-700 to-slate-900 dark:from-slate-800 dark:to-black text-white';
@@ -1133,41 +1071,8 @@ RESPONDE SOLO UN NÚMERO ENTRE 0 Y 25 (ej: 15 o 4), sin explicación, sin símbo
         }
 
         setIsAnalyzing(true);
-        try {
-            const month = new Date().getMonth() + 1;
-            const season = month >= 3 && month <= 8 ? 'verano (cálido)' : 'invierno (frío)';
-            
-            const prompt = `Eres experto en almacenamiento y logística de productos alimentarios.
-            
-Producto: ${product}
-Proveedor: ${supplier || 'N/A'}
-Temporada actual: ${season}
-Fecha de vencimiento: ${expirationDate || 'N/A'}
-
-Sugiere UNA temperatura óptima (en °C) para almacenar este producto, considerando:
-- Tipo de producto
-- Temporada/clima
-- Regulaciones internacionales
-
-RESPONDE SOLO UN NÚMERO (ej: 18 o 12), sin explicación.`;
-
-            const result = await callGeminiAPI(prompt);
-            const temp = parseInt(result?.trim() || '0');
-            
-            if (temp > 0 && temp < 50) {
-                setTemperatureSuggestion(temp);
-                setTemperature(temp.toString());
-                showToast(`Temperatura sugerida: ${temp}°C`, 'success');
-            } else {
-                setTemperatureSuggestion(null);
-                showToast('No se pudo sugerir temperatura', 'error');
-            }
-        } catch (e) {
-            logger.error('Temperature suggestion error:', e);
-            showToast('Error al sugerir temperatura', 'error');
-        } finally {
-            setIsAnalyzing(false);
-        }
+        showToast('Ingresa temperatura manualmente. Función IA deshabilitada.', 'info');
+        setIsAnalyzing(false);
     };
 
     // Helper to determine style based on active section

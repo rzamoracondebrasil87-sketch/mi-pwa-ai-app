@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { WeighingRecord } from '../types';
-import { callGeminiAPI } from '../services/geminiService';
 import { useTranslation } from '../services/i18n';
 import { useToast } from './Toast';
 import { logger } from '../services/logger';
@@ -31,29 +30,19 @@ export const WeighingAssistant: React.FC<WeighingAssistantProps> = ({ record, is
         setMessages(prev => [...prev, { role: 'user', text: userMessage }]);
         setLoading(true);
 
-        try {
-            const context = record
-                ? `Context: Registro actual - Supplier: ${record.supplier}, Producto: ${record.product}, Nota: ${record.noteWeight}kg, Bruto: ${record.grossWeight}kg, Tara: ${record.taraTotal}kg, Liquido: ${record.netWeight}kg.`
-                : '';
-
-            const prompt = `Eres un asistente de pesaje experto. Ayuda con dudas sobre:
-- Peso neto, bruto y tara
-- Diferencias de peso
-- Anomalías en el pesaje
-- Buenas prácticas
-
-${context}
-
-Responde brevemente (máximo 2 oraciones) en el idioma del usuario.`;
-
-            const response = await callGeminiAPI(prompt + '\n\nPregunta: ' + userMessage);
-            setMessages(prev => [...prev, { role: 'assistant', text: response }]);
-        } catch (err) {
-            logger.error('Asistente error:', err);
-            showToast('Error al conectar con asistente', 'error');
-        } finally {
+        // Simulate response delay
+        setTimeout(() => {
+            const responses = [
+                'Peso neto = peso bruto - tara. La tara es el peso del embalaje.',
+                'Verifica que la báscula esté calibrada correctamente.',
+                'Para productos frescos, tolerancia típica es ±200g.',
+                'La temperatura afecta el peso de algunos productos.',
+                'Documenta siempre las diferencias encontradas.'
+            ];
+            const randomResponse = responses[Math.floor(Math.random() * responses.length)];
+            setMessages(prev => [...prev, { role: 'assistant', text: randomResponse }]);
             setLoading(false);
-        }
+        }, 800);
     };
 
     if (!isOpen) return null;

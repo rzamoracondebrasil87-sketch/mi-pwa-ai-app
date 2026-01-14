@@ -1,32 +1,37 @@
-import fs from 'fs';
-import path from 'path';
-
-// Verificar que las variables críticas existan en tiempo de build
-const requiredVars = [
-  'GOOGLE_CLOUD_CREDENTIALS',
-  'VITE_GEMINI_API_KEY',
-  'VITE_GEMINI_API_KEYS',
-  'VITE_GOOGLE_VISION_KEY'
+const requiredEnvVars = [
+    'GOOGLE_CLOUD_CREDENTIALS',
+    'VITE_GOOGLE_VISION_KEY'
 ];
 
-console.log('\n📋 Verificando variables de entorno en build time...\n');
+console.log('📋 Verificando variables de entorno en build time...\n');
 
-const missing = [];
-for (const varName of requiredVars) {
-  const value = process.env[varName];
-  if (!value) {
-    missing.push(varName);
-    console.log(`❌ ${varName}: NO CONFIGURADA`);
-  } else {
-    const preview = value.substring(0, 20) + (value.length > 20 ? '...' : '');
-    console.log(`✅ ${varName}: ${preview}`);
-  }
+let missingVars = [];
+let presentVars = [];
+
+requiredEnvVars.forEach(varName => {
+    if (process.env[varName]) {
+        console.log(`✅ ${varName}: CONFIGURADA`);
+        presentVars.push(varName);
+    } else {
+        console.log(`❌ ${varName}: NO CONFIGURADA`);
+        missingVars.push(varName);
+    }
+});
+
+console.log(`\n${missingVars.length > 0 ? '⚠️  ADVERTENCIA:' : '✅ ÉXITO:'} ${missingVars.length + presentVars.length} variable(s) verificada(s)`);
+
+if (missingVars.length > 0) {
+    console.log(`Variables faltantes: ${missingVars.join(', ')}`);
+    console.log('Nota: Las variables no prefixadas con VITE_ se cargarán en serverless functions');
 }
 
-if (missing.length > 0) {
-  console.log(`\n⚠️  ADVERTENCIA: ${missing.length} variable(s) de entorno faltante(s)`);
-  console.log('Variables faltantes:', missing.join(', '));
-  console.log('\nNota: Las variables no prefixadas con VITE_ se cargarán en serverless functions');
-} else {
-  console.log('\n✅ Todas las variables de entorno están configuradas!\n');
+if (missingVars.length > 0) {
+    console.log('\n🔧 Para desarrollo local, crea un archivo .env con las variables faltantes.');
+    console.log('🔧 Para producción, configura las variables en Vercel dashboard.');
+}
+
+// Exit with error if critical vars are missing
+if (missingVars.length > 0) {
+    console.log('\n❌ Build cancelado: Variables de entorno faltantes');
+    process.exit(1);
 }
