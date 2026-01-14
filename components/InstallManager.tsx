@@ -95,7 +95,7 @@ export const InstallManager: React.FC = () => {
             e.preventDefault();
             setInstallPrompt(e as InstallPromptEvent);
             
-            // Auto-show modal if not installed
+            // Auto-show modal if not installed (but DON'T call prompt yet)
             if (!window.matchMedia('(display-mode: standalone)').matches) {
                 setTimeout(() => setShowInstallModal(true), 2000); // Wait 2s before showing
             }
@@ -106,9 +106,9 @@ export const InstallManager: React.FC = () => {
             setTimeout(() => setShowInstallModal(true), 2500);
         }
 
-        window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+        window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt as EventListener);
 
-        return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+        return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt as EventListener);
     }, []);
 
     const installApp = async () => {
