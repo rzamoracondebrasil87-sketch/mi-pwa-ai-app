@@ -8,6 +8,7 @@
   "license": "MIT",
   "scripts": {
     "dev": "vite",
+    "prebuild": "node scripts/check-env.mjs",
     "build": "vite build",
     "preview": "vite preview",
     "lint": "tsc --noEmit",
