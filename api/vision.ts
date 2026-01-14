@@ -96,6 +96,10 @@ function extraerDatosEtiqueta(texto: string) {
 
 async function getAccessToken(credentials: any): Promise<string> {
   try {
+    if (!credentials.client_email || !credentials.private_key) {
+      throw new Error('Invalid credentials: missing client_email or private_key');
+    }
+
     // Crear JWT con la librería jsonwebtoken
     const token = jwt.sign(
       {
@@ -118,17 +122,23 @@ async function getAccessToken(credentials: any): Promise<string> {
       body: `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${token}`,
     });
 
+    if (!tokenResponse.ok) {
+      const errorText = await tokenResponse.text();
+      logger.error('Token exchange HTTP error:', tokenResponse.status, errorText);
+      throw new Error(`Token exchange failed: ${tokenResponse.status}`);
+    }
+
     const tokenData: any = await tokenResponse.json();
     
     if (!tokenData.access_token) {
-      logger.error('Token exchange failed');
-      throw new Error(`Token error`);
+      logger.error('Token exchange response missing access_token:', tokenData);
+      throw new Error(`Token exchange failed: no access_token in response`);
     }
 
     logger.debug('Access token obtained successfully');
     return tokenData.access_token;
-  } catch (error) {
-    logger.error('Token generation error:', error?.message || error);
+  } catch (error: any) {
+    logger.error('Token generation error:', error?.message || String(error));
     throw error;
   }
 }

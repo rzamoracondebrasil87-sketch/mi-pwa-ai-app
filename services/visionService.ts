@@ -14,12 +14,28 @@ export async function analyzeImageWithVision(base64Image: string): Promise<strin
       body: JSON.stringify({ imageBase64: base64Image }),
     });
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(`Vision API error: ${error.message || response.statusText}`);
+    // Always try to parse as JSON first
+    let data: any;
+    const contentType = response.headers.get('content-type');
+    
+    try {
+      data = await response.json();
+    } catch (parseError) {
+      const textResponse = await response.text();
+      console.error('Vision API returned non-JSON response:', textResponse.substring(0, 200));
+      throw new Error(`Vision API returned invalid response: ${textResponse.substring(0, 100)}`);
     }
 
-    const data = await response.json();
+    if (!response.ok) {
+      const errorMsg = data?.message || data?.error || response.statusText;
+      console.error('Vision API error:', errorMsg);
+      // Check if client should use offline OCR
+      if (data?.shouldUseOfflineOCR || response.status >= 500) {
+        throw new Error(`Vision API unavailable: ${errorMsg} (fallback to offline OCR)`);
+      }
+      throw new Error(`Vision API error: ${errorMsg}`);
+    }
+
     return data.text || '';
   } catch (error) {
     if (error instanceof Error) {
